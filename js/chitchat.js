@@ -14,7 +14,11 @@ class ChitChatComponent extends HTMLElement {
         this.isTyping = false;
         this.eventListeners = {};
         
-        // Default options
+        // Detect screen type and set responsive defaults
+        this.screenType = this.detectScreenType();
+        this.responsiveDefaults = this.getResponsiveDefaults();
+        
+        // Default options with responsive sizing
         this.options = {
             theme: 'light',
             enableEmoji: true,
@@ -25,8 +29,100 @@ class ChitChatComponent extends HTMLElement {
             showTimestamps: true,
             showTypingIndicator: true,
             animationDuration: 300,
-            currentUser: { id: 'user', name: 'You', avatar: null }
+            currentUser: { id: 'user', name: 'You', avatar: null },
+            ...this.responsiveDefaults
         };
+    }
+
+    detectScreenType() {
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        const pixelRatio = window.devicePixelRatio || 1;
+        const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+
+        // Mobile devices
+        if (width <= 768 || isTouch && width <= 1024) {
+            return 'mobile';
+        }
+        
+        // 14-16 inch laptops (common resolutions: 1366x768, 1440x900, 1536x864, 1600x900, 1680x1050)
+        if (width <= 1680 && height <= 1050) {
+            return 'laptop';
+        }
+        
+        // Large desktop/multi-monitor (4K, ultrawide, etc.)
+        if (width >= 2560 || height >= 1440) {
+            return 'desktop-large';
+        }
+        
+        // Standard desktop (1920x1080, etc.)
+        return 'desktop';
+    }
+
+    getResponsiveDefaults() {
+        const { screenType } = this;
+        const viewport = {
+            width: window.innerWidth,
+            height: window.innerHeight
+        };
+
+        switch (screenType) {
+            case 'mobile':
+                return {
+                    width: '100vw',
+                    height: '100vh',
+                    maxWidth: '100vw',
+                    maxHeight: '100vh',
+                    position: 'fixed',
+                    top: '0',
+                    left: '0',
+                    right: '0',
+                    bottom: '0',
+                    borderRadius: '0',
+                    enableResize: false,
+                    compactMode: true
+                };
+                
+            case 'laptop':
+                return {
+                    width: Math.min(480, viewport.width * 0.75),
+                    height: Math.min(680, viewport.height * 0.8),
+                    maxWidth: 550,
+                    maxHeight: viewport.height * 0.85,
+                    enableResize: true,
+                    compactMode: false
+                };
+                
+            case 'desktop':
+                return {
+                    width: 450,
+                    height: 650,
+                    maxWidth: 600,
+                    maxHeight: viewport.height * 0.85,
+                    enableResize: true,
+                    compactMode: false
+                };
+                
+            case 'desktop-large':
+                return {
+                    width: 500,
+                    height: 700,
+                    maxWidth: 800,
+                    maxHeight: viewport.height * 0.8,
+                    enableResize: true,
+                    compactMode: false
+                };
+                
+            default:
+                return {
+                    width: 400,
+                    height: 600,
+                    maxWidth: 500,
+                    maxHeight: 700,
+                    enableResize: true,
+                    compactMode: false
+                };
+        }
     }
 
     static get observedAttributes() {
@@ -125,10 +221,13 @@ class ChitChatComponent extends HTMLElement {
     }
 
     createChatInterface() {
+        // Apply responsive styling to the component itself
+        this.applyResponsiveStyles();
+        
         this.innerHTML = `
-            <div class="chitchat-container" data-theme="${this.options.theme}">
+            <div class="chitchat-container" data-theme="${this.options.theme}" data-screen-type="${this.screenType}">
                 <!-- Chat Header -->
-                <div class="chitchat-header">
+                <div class="chitchat-header ${this.options.compactMode ? 'compact' : ''}">
                     <div class="d-flex align-items-center">
                         <div class="chat-avatar me-3">
                             <div class="avatar-placeholder bg-primary text-white rounded-circle d-flex align-items-center justify-content-center">
@@ -204,6 +303,56 @@ class ChitChatComponent extends HTMLElement {
         this.addStyles();
     }
 
+    applyResponsiveStyles() {
+        const defaults = this.options;
+        
+        // Apply positioning and sizing based on screen type
+        if (defaults.position) {
+            this.style.position = defaults.position;
+        }
+        
+        if (defaults.top) this.style.top = defaults.top;
+        if (defaults.left) this.style.left = defaults.left;
+        if (defaults.right) this.style.right = defaults.right;
+        if (defaults.bottom) this.style.bottom = defaults.bottom;
+        
+        // Set dimensions
+        if (typeof defaults.width === 'number') {
+            this.style.width = defaults.width + 'px';
+        } else if (defaults.width) {
+            this.style.width = defaults.width;
+        }
+        
+        if (typeof defaults.height === 'number') {
+            this.style.height = defaults.height + 'px';
+        } else if (defaults.height) {
+            this.style.height = defaults.height;
+        }
+        
+        // Set max dimensions
+        if (typeof defaults.maxWidth === 'number') {
+            this.style.maxWidth = defaults.maxWidth + 'px';
+        } else if (defaults.maxWidth) {
+            this.style.maxWidth = defaults.maxWidth;
+        }
+        
+        if (typeof defaults.maxHeight === 'number') {
+            this.style.maxHeight = defaults.maxHeight + 'px';
+        } else if (defaults.maxHeight) {
+            this.style.maxHeight = defaults.maxHeight;
+        }
+        
+        // Apply border radius
+        if (defaults.borderRadius) {
+            this.style.borderRadius = defaults.borderRadius;
+        }
+        
+        // Set z-index for mobile fullscreen
+        if (this.screenType === 'mobile') {
+            this.style.zIndex = '9999';
+        }
+    }
+
     addStyles() {
         if (document.getElementById('chitchat-styles')) return;
 
@@ -216,11 +365,34 @@ class ChitChatComponent extends HTMLElement {
                 background: white;
                 box-shadow: 0 8px 32px rgba(0,0,0,0.1);
                 overflow: hidden;
-                max-width: 400px;
-                height: 600px;
+                width: 100%;
+                height: 100%;
                 display: flex;
                 flex-direction: column;
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                position: relative;
+            }
+
+            /* Mobile fullscreen adjustments */
+            .chitchat-container[data-screen-type="mobile"] {
+                border: none;
+                border-radius: 0;
+                box-shadow: none;
+                height: 100vh;
+                width: 100vw;
+            }
+
+            /* Desktop adjustments */
+            .chitchat-container[data-screen-type="desktop"], 
+            .chitchat-container[data-screen-type="desktop-large"] {
+                min-width: 400px;
+                min-height: 500px;
+            }
+
+            /* Laptop adjustments */
+            .chitchat-container[data-screen-type="laptop"] {
+                min-width: 350px;
+                min-height: 450px;
             }
 
             .chitchat-header {
@@ -228,6 +400,19 @@ class ChitChatComponent extends HTMLElement {
                 color: white;
                 padding: 16px 20px;
                 border-bottom: 1px solid rgba(255,255,255,0.1);
+                flex-shrink: 0;
+            }
+
+            .chitchat-header.compact {
+                padding: 12px 16px;
+            }
+
+            .chitchat-header.compact h6 {
+                font-size: 0.9rem;
+            }
+
+            .chitchat-header.compact small {
+                font-size: 0.75rem;
             }
 
             .chat-avatar .avatar-placeholder {
@@ -482,16 +667,152 @@ class ChitChatComponent extends HTMLElement {
                 border-color: #555;
             }
 
-            /* Mobile responsiveness */
-            @media (max-width: 768px) {
+            /* Resize Handle */
+            .chitchat-resize-handle {
+                position: absolute;
+                bottom: 0;
+                right: 0;
+                width: 20px;
+                height: 20px;
+                background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+                cursor: nw-resize;
+                z-index: 1001;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: white;
+                font-size: 10px;
+                border-radius: 0 0 16px 0;
+                opacity: 0.7;
+                transition: opacity 0.2s;
+            }
+
+            .chitchat-resize-handle:hover {
+                opacity: 1;
+            }
+
+            /* Mobile devices (phones) */
+            @media (max-width: 767px) {
                 .chitchat-container {
-                    max-width: 100%;
-                    height: 100vh;
-                    border-radius: 0;
+                    border: none !important;
+                    border-radius: 0 !important;
+                    box-shadow: none !important;
+                    width: 100vw !important;
+                    height: 100vh !important;
+                    max-width: none !important;
+                    max-height: none !important;
                 }
                 
+                .chitchat-header {
+                    padding: 12px 16px;
+                }
+
+                .chat-avatar .avatar-placeholder {
+                    width: 32px;
+                    height: 32px;
+                    font-size: 14px;
+                }
+
                 .message-bubble {
                     max-width: 85%;
+                    padding: 10px 14px;
+                    font-size: 0.9rem;
+                }
+
+                .chitchat-resize-handle {
+                    display: none !important;
+                }
+            }
+
+            /* 14-16 inch laptops (1366x768 to 1680x1050) */
+            @media (min-width: 768px) and (max-width: 1680px) {
+                .chitchat-container {
+                    min-width: 400px;
+                    min-height: 500px;
+                    max-width: 550px;
+                    max-height: 85vh;
+                }
+
+                .message-bubble {
+                    max-width: 70%;
+                }
+
+                .chitchat-header {
+                    padding: 16px 20px;
+                }
+
+                .chitchat-messages {
+                    padding: 16px;
+                }
+
+                .chitchat-input {
+                    padding: 12px 20px;
+                }
+
+                /* Optimize for common laptop screen heights */
+                @media (max-height: 900px) {
+                    .chitchat-container {
+                        max-height: 80vh;
+                    }
+                }
+            }
+
+            /* Large desktops and multi-monitor setups */
+            @media (min-width: 1920px) {
+                .chitchat-container {
+                    min-width: 450px;
+                    min-height: 550px;
+                }
+
+                .chitchat-header {
+                    padding: 18px 24px;
+                }
+
+                .message-bubble {
+                    max-width: 70%;
+                    padding: 14px 18px;
+                }
+            }
+
+            /* Ultra-wide and high-DPI displays */
+            @media (min-width: 2560px) {
+                .chitchat-container {
+                    min-width: 500px;
+                    min-height: 600px;
+                }
+
+                .chitchat-header {
+                    padding: 20px 28px;
+                }
+
+                .message-bubble {
+                    max-width: 65%;
+                    padding: 16px 20px;
+                    font-size: 1rem;
+                }
+            }
+
+            /* Portrait orientation adjustments */
+            @media (orientation: portrait) and (max-width: 1024px) {
+                .chitchat-container[data-screen-type="mobile"] {
+                    width: 100vw !important;
+                    height: 100vh !important;
+                }
+            }
+
+            /* Landscape phones */
+            @media (max-height: 500px) and (orientation: landscape) {
+                .chitchat-header {
+                    padding: 8px 12px;
+                }
+
+                .chitchat-header h6 {
+                    font-size: 0.85rem;
+                }
+
+                .message-bubble {
+                    padding: 8px 12px;
+                    font-size: 0.85rem;
                 }
             }
         `;
@@ -552,15 +873,178 @@ class ChitChatComponent extends HTMLElement {
                 this.sendMessage(e.target.textContent.trim());
             }
         });
+
+        // Custom resize functionality
+        this.setupCustomResize();
+    }
+
+    setupCustomResize() {
+        // Check if resizing is enabled for this screen type
+        if (!this.options.enableResize || this.screenType === 'mobile') return;
+
+        const container = this.querySelector('.chitchat-container');
+        if (!container) return;
+
+        let isResizing = false;
+        let startX, startY, startWidth, startHeight;
+
+        // Get responsive constraints
+        const minWidth = this.screenType === 'laptop' ? 350 : 400;
+        const minHeight = this.screenType === 'laptop' ? 450 : 500;
+        const maxWidth = this.options.maxWidth || window.innerWidth * 0.9;
+        const maxHeight = this.options.maxHeight || window.innerHeight * 0.9;
+
+        // Create a better resize handle
+        const resizeHandle = document.createElement('div');
+        resizeHandle.className = 'chitchat-resize-handle';
+        resizeHandle.innerHTML = '<i class="bi bi-grip-horizontal"></i>';
+        resizeHandle.style.cssText = `
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            width: 20px;
+            height: 20px;
+            background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+            cursor: nw-resize;
+            z-index: 1001;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 10px;
+            border-radius: 0 0 16px 0;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+        `;
+
+        container.appendChild(resizeHandle);
+
+        // Mouse events for resize
+        resizeHandle.addEventListener('mousedown', (e) => {
+            isResizing = true;
+            startX = e.clientX;
+            startY = e.clientY;
+            startWidth = parseInt(document.defaultView.getComputedStyle(container).width, 10);
+            startHeight = parseInt(document.defaultView.getComputedStyle(container).height, 10);
+            
+            document.addEventListener('mousemove', handleResize);
+            document.addEventListener('mouseup', stopResize);
+            e.preventDefault();
+        });
+
+        // Touch events for mobile/tablet resize
+        resizeHandle.addEventListener('touchstart', (e) => {
+            isResizing = true;
+            const touch = e.touches[0];
+            startX = touch.clientX;
+            startY = touch.clientY;
+            startWidth = parseInt(document.defaultView.getComputedStyle(container).width, 10);
+            startHeight = parseInt(document.defaultView.getComputedStyle(container).height, 10);
+            
+            document.addEventListener('touchmove', handleTouchResize);
+            document.addEventListener('touchend', stopResize);
+            e.preventDefault();
+        });
+
+        // Hover effects
+        resizeHandle.addEventListener('mouseenter', () => {
+            resizeHandle.style.opacity = '1';
+        });
+
+        resizeHandle.addEventListener('mouseleave', () => {
+            if (!isResizing) resizeHandle.style.opacity = '0.7';
+        });
+
+        const handleResize = (e) => {
+            if (!isResizing) return;
+            
+            const newWidth = Math.max(minWidth, Math.min(maxWidth, startWidth + e.clientX - startX));
+            const newHeight = Math.max(minHeight, Math.min(maxHeight, startHeight + e.clientY - startY));
+            
+            // Update component dimensions
+            this.style.width = newWidth + 'px';
+            this.style.height = newHeight + 'px';
+        };
+
+        const handleTouchResize = (e) => {
+            if (!isResizing) return;
+            const touch = e.touches[0];
+            
+            const newWidth = Math.max(minWidth, Math.min(maxWidth, startWidth + touch.clientX - startX));
+            const newHeight = Math.max(minHeight, Math.min(maxHeight, startHeight + touch.clientY - startY));
+            
+            // Update component dimensions
+            this.style.width = newWidth + 'px';
+            this.style.height = newHeight + 'px';
+        };
+
+        const stopResize = () => {
+            isResizing = false;
+            resizeHandle.style.opacity = '0.7';
+            document.removeEventListener('mousemove', handleResize);
+            document.removeEventListener('mouseup', stopResize);
+            document.removeEventListener('touchmove', handleTouchResize);
+            document.removeEventListener('touchend', stopResize);
+            
+            // Dispatch resize event
+            this.dispatchEvent(new CustomEvent('chitchat:resized', {
+                detail: {
+                    width: container.offsetWidth,
+                    height: container.offsetHeight
+                },
+                bubbles: true
+            }));
+        };
+
+        // Handle window resize to keep chat in bounds
+        window.addEventListener('resize', () => {
+            // Recalculate responsive constraints on window resize
+            const updatedDefaults = this.getResponsiveDefaults();
+            const newMaxWidth = typeof updatedDefaults.maxWidth === 'number' ? 
+                updatedDefaults.maxWidth : window.innerWidth * 0.9;
+            const newMaxHeight = typeof updatedDefaults.maxHeight === 'number' ? 
+                updatedDefaults.maxHeight : window.innerHeight * 0.9;
+            
+            // Keep chat within new bounds
+            if (this.offsetWidth > newMaxWidth) {
+                this.style.width = newMaxWidth + 'px';
+            }
+            if (this.offsetHeight > newMaxHeight) {
+                this.style.height = newMaxHeight + 'px';
+            }
+        });
     }
 
     registerDefaultMessageTypes() {
-        // Register built-in message type handlers
-        this.registerMessageType('text', this.renderTextMessage.bind(this));
-        this.registerMessageType('image', this.renderImageMessage.bind(this));
-        this.registerMessageType('table', this.renderTableMessage.bind(this));
-        this.registerMessageType('system', this.renderSystemMessage.bind(this));
-        this.registerMessageType('quick_reply', this.renderQuickReplyMessage.bind(this));
+        // Message types are now registered via the MessageRegistry
+        // This allows for extensibility and clean separation of concerns
+        if (typeof window.ChitChatMessages !== 'undefined') {
+            const registry = window.ChitChatMessages.registry;
+            
+            // Register message types with their handlers
+            for (const type of registry.getRegisteredTypes()) {
+                this.registerMessageType(type, (message) => {
+                    const messageImpl = registry.getMessageImplementation(type, this);
+                    
+                    // Validate message before rendering
+                    const validation = window.ChitChatMessages.MessageValidator.validate(message, messageImpl);
+                    if (!validation.valid) {
+                        console.warn(`Message validation failed for type ${type}:`, validation.errors);
+                        // Fall back to text message
+                        const textImpl = registry.getMessageImplementation('text', this);
+                        return textImpl.render({
+                            ...message,
+                            content: `[Invalid ${type} message: ${validation.errors.join(', ')}]`
+                        });
+                    }
+                    
+                    return messageImpl.render(message);
+                });
+            }
+        } else {
+            console.warn('ChitChatMessages not loaded, using fallback text renderer');
+            this.registerMessageType('text', (message) => this.escapeHtml(message.content || ''));
+        }
     }
 
     registerMessageType(type, handler) {
@@ -568,13 +1052,8 @@ class ChitChatComponent extends HTMLElement {
     }
 
     addMessage(messageData) {
-        const message = {
-            id: Date.now() + Math.random(),
-            type: 'text',
-            sender: null,
-            timestamp: new Date(),
-            ...messageData
-        };
+        // Create and validate message
+        const message = this.createMessage(messageData);
 
         this.messages.push(message);
         
@@ -589,6 +1068,9 @@ class ChitChatComponent extends HTMLElement {
             this.scrollToBottom();
         }
 
+        // Emit message added event
+        this.emit('message-added', { message });
+
         return message;
     }
 
@@ -601,9 +1083,23 @@ class ChitChatComponent extends HTMLElement {
         
         messageElement.className = `message ${senderClass}`;
         messageElement.dataset.messageId = message.id;
+        messageElement.dataset.messageType = message.type;
 
-        const handler = this.messageHandlers.get(message.type) || this.renderTextMessage;
-        const content = handler(message);
+        // Get the message handler and render content
+        const handler = this.messageHandlers.get(message.type);
+        let content;
+        
+        if (handler) {
+            try {
+                content = handler(message);
+            } catch (error) {
+                console.error(`Error rendering message type ${message.type}:`, error);
+                content = this.escapeHtml(`[Error rendering ${message.type} message]`);
+            }
+        } else {
+            console.warn(`No handler found for message type: ${message.type}`);
+            content = this.escapeHtml(message.content || `[Unsupported message type: ${message.type}]`);
+        }
         
         messageElement.innerHTML = `
             <div class="message-bubble">
@@ -623,67 +1119,115 @@ class ChitChatComponent extends HTMLElement {
             messageElement.style.animationDelay = '0s';
         });
 
-        // Dispatch message added event
-        this.dispatchEvent(new CustomEvent('chitchat:message-added', {
-            detail: { message, element: messageElement },
-            bubbles: true
-        }));
+        // Emit message rendered event
+        this.emit('message-rendered', { message, element: messageElement });
     }
 
-    renderTextMessage(message) {
-        return this.escapeHtml(message.content);
+    // === MESSAGE TYPE EXTENSIBILITY API ===
+    
+    /**
+     * Register a custom message type
+     * @param {string} type - Message type name
+     * @param {Function|BaseMessage} handler - Message handler function or BaseMessage instance
+     */
+    registerCustomMessageType(type, handler) {
+        if (typeof handler === 'function') {
+            // Function-based handler (legacy support)
+            this.registerMessageType(type, handler);
+        } else if (handler instanceof window.BaseMessage) {
+            // BaseMessage instance
+            this.registerMessageType(type, (message) => handler.render(message));
+        } else if (typeof handler === 'object' && handler.render) {
+            // Object with render method
+            this.registerMessageType(type, (message) => handler.render(message));
+        } else {
+            throw new Error('Message handler must be a function, BaseMessage instance, or object with render method');
+        }
     }
 
-    renderImageMessage(message) {
-        return `
-            <div class="message-rich-content">
-                <img src="${message.url}" alt="${message.alt || 'Image'}" 
-                     class="message-image" onclick="window.open('${message.url}', '_blank')">
-                ${message.caption ? `<div class="mt-2">${this.escapeHtml(message.caption)}</div>` : ''}
-            </div>
-        `;
+    /**
+     * Get available message types
+     * @returns {Array<string>} Array of registered message type names
+     */
+    getAvailableMessageTypes() {
+        return Array.from(this.messageHandlers.keys());
     }
 
-    renderTableMessage(message) {
-        const headers = message.headers || [];
-        const rows = message.rows || [];
+    /**
+     * Check if a message type is supported
+     * @param {string} type - Message type to check
+     * @returns {boolean}
+     */
+    supportsMessageType(type) {
+        return this.messageHandlers.has(type);
+    }
+
+    /**
+     * Create a message with validation
+     * @param {Object} messageData - Message data
+     * @returns {Object} Validated and normalized message
+     */
+    createMessage(messageData) {
+        const message = {
+            id: Date.now() + Math.random(),
+            type: 'text',
+            sender: null,
+            timestamp: new Date(),
+            ...messageData
+        };
+
+        // Validate message if validator is available
+        if (typeof window.ChitChatMessages !== 'undefined' && this.supportsMessageType(message.type)) {
+            const registry = window.ChitChatMessages.registry;
+            const messageImpl = registry.getMessageImplementation(message.type, this);
+            const validation = window.ChitChatMessages.MessageValidator.validate(message, messageImpl);
+            
+            if (!validation.valid) {
+                console.warn(`Message validation failed:`, validation.errors);
+                // Convert to error message
+                message.type = 'system';
+                message.content = `Invalid message: ${validation.errors.join(', ')}`;
+                message.variant = 'error';
+            }
+        }
+
+        return message;
+    }
+
+    // === UTILITY METHODS ===
+    
+    /**
+     * Escape HTML for security
+     * @param {string} text - Text to escape
+     * @returns {string} Escaped HTML
+     */
+    escapeHtml(text) {
+        if (typeof text !== 'string') return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    /**
+     * Format timestamp for display
+     * @param {Date|string|number} timestamp - Timestamp to format
+     * @returns {string} Formatted timestamp
+     */
+    formatTimestamp(timestamp) {
+        const now = new Date();
+        const messageTime = new Date(timestamp);
+        const diffInMinutes = Math.floor((now - messageTime) / (1000 * 60));
+
+        if (diffInMinutes < 1) return 'Just now';
+        if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
+        if (diffInMinutes < 1440) return `${Math.floor(diffInMinutes / 60)}h ago`;
         
-        return `
-            <div class="message-rich-content">
-                ${message.title ? `<strong>${this.escapeHtml(message.title)}</strong>` : ''}
-                <table class="table table-sm message-table">
-                    ${headers.length ? `
-                        <thead>
-                            <tr>
-                                ${headers.map(h => `<th>${this.escapeHtml(h)}</th>`).join('')}
-                            </tr>
-                        </thead>
-                    ` : ''}
-                    <tbody>
-                        ${rows.map(row => `
-                            <tr>
-                                ${row.map(cell => `<td>${this.escapeHtml(cell)}</td>`).join('')}
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
-        `;
-    }
-
-    renderSystemMessage(message) {
-        return `<i class="bi bi-info-circle me-2"></i>${this.escapeHtml(message.content)}`;
-    }
-
-    renderQuickReplyMessage(message) {
-        return `
-            ${this.escapeHtml(message.content)}
-            <div class="quick-replies">
-                ${message.replies.map(reply => 
-                    `<button class="quick-reply-btn">${this.escapeHtml(reply)}</button>`
-                ).join('')}
-            </div>
-        `;
+        return messageTime.toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
     }
 
     sendMessage(content = null) {
@@ -810,28 +1354,7 @@ class ChitChatComponent extends HTMLElement {
         }
     }
 
-    formatTimestamp(timestamp) {
-        const now = new Date();
-        const messageTime = new Date(timestamp);
-        const diffInMinutes = Math.floor((now - messageTime) / (1000 * 60));
 
-        if (diffInMinutes < 1) return 'Just now';
-        if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
-        if (diffInMinutes < 1440) return `${Math.floor(diffInMinutes / 60)}h ago`;
-        
-        return messageTime.toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-    }
-
-    escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
 
     minimize() {
         this.container.style.transform = 'scale(0.8)';
