@@ -248,25 +248,30 @@ class ChitChatComponent extends HTMLElement {
             <div class="chitchat-container" data-theme="${this.options.theme}" data-screen-type="${this.screenType}">
                 <!-- Chat Header -->
                 <div class="chitchat-header ${this.options.compactMode ? 'compact' : ''}">
-                    <div class="d-flex align-items-center">
-                        <div class="chat-avatar me-3">
-                            <div class="avatar-placeholder bg-primary text-white rounded-circle d-flex align-items-center justify-content-center">
-                                <i class="bi bi-chat-dots-fill"></i>
+                    <div class="d-flex align-items-center justify-content-between w-100">
+                        <div class="d-flex align-items-center">
+                            <div class="chat-avatar me-3">
+                                <div class="avatar-placeholder bg-primary text-white rounded-circle d-flex align-items-center justify-content-center">
+                                    <i class="bi bi-chat-dots-fill"></i>
+                                </div>
+                            </div>
+                            <div>
+                                <h6 class="mb-0 fw-semibold">SecureBank Support</h6>
+                                <small class="text-muted">
+                                    <span class="status-indicator online"></span>
+                                    Online - Typically replies instantly
+                                </small>
                             </div>
                         </div>
-                        <div class="flex-grow-1">
-                            <h6 class="mb-0 fw-semibold">SecureBank Support</h6>
-                            <small class="text-muted">
-                                <span class="status-indicator online"></span>
-                                Online - Typically replies instantly
-                            </small>
-                        </div>
-                        <div class="chat-actions">
-                            <button class="btn btn-sm btn-outline-secondary me-2" data-action="minimize">
-                                <i class="bi bi-dash-lg"></i>
+                        <div class="chat-actions d-flex">
+                            <button class="btn btn-sm btn-outline-light me-1" data-action="help" title="Help">
+                                <i class="bi bi-question-circle"></i>
                             </button>
-                            <button class="btn btn-sm btn-outline-secondary" data-action="close">
-                                <i class="bi bi-x-lg"></i>
+                            <button class="btn btn-sm btn-outline-light me-1" data-action="clear" title="Clear Messages">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-light" data-action="minimize" title="Minimize">
+                                <i class="bi bi-dash-lg"></i>
                             </button>
                         </div>
                     </div>
@@ -406,7 +411,8 @@ class ChitChatComponent extends HTMLElement {
         this.addEventListener('click', (e) => {
             const action = e.target.closest('[data-action]')?.dataset.action;
             if (action === 'minimize') this.minimize();
-            if (action === 'close') this.close();
+            if (action === 'clear') this.clear();
+            if (action === 'help') this.showHelp();
         });
 
         // Quick reply handling
@@ -1055,33 +1061,103 @@ class ChitChatComponent extends HTMLElement {
 
     handleInputChange() {
         // Handle typing indicators, suggestions, etc.
-        const input = this.container.querySelector('#chitchat-input');
-        if (input.value.length > 0 && !this.isTyping) {
+        const input = this.querySelector('#chitchat-input');
+        if (input && input.value.length > 0 && !this.isTyping) {
             // Could trigger typing indicator to other users
+            this.otlc.debug('User typing', { length: input.value.length });
         }
     }
 
 
 
     minimize() {
-        this.container.style.transform = 'scale(0.8)';
-        this.container.style.opacity = '0.8';
-        console.log('Chat minimized');
+        const container = this.querySelector('.chitchat-container');
+        if (container) {
+            container.style.transform = 'scale(0)';
+            container.style.opacity = '0';
+            container.style.transition = 'all 0.3s ease';
+            
+            setTimeout(() => {
+                this.style.display = 'none';
+                
+                // Dispatch minimize event
+                this.dispatchEvent(new CustomEvent('chitchat:minimized', {
+                    detail: { component: this },
+                    bubbles: true
+                }));
+            }, 300);
+            
+            this.otlc.info('Chat minimized');
+        }
     }
 
     close() {
-        this.container.style.transform = 'scale(0)';
-        this.container.style.opacity = '0';
-        setTimeout(() => {
-            this.container.style.display = 'none';
-        }, 300);
-        console.log('Chat closed');
+        const container = this.querySelector('.chitchat-container');
+        if (container) {
+            container.style.transform = 'scale(0)';
+            container.style.opacity = '0';
+            container.style.transition = 'all 0.3s ease';
+            
+            setTimeout(() => {
+                this.style.display = 'none';
+                
+                // Dispatch close event
+                this.dispatchEvent(new CustomEvent('chitchat:closed', {
+                    detail: { component: this },
+                    bubbles: true
+                }));
+            }, 300);
+            
+            this.otlc.info('Chat closed');
+        }
+    }
+
+    showHelp() {
+        // Show help message
+        this.addMessage({
+            type: 'system',
+            content: 'Welcome to SecureBank Support! You can ask questions about your account, transactions, or banking services. Use the buttons below to get started.',
+            sender: 'system'
+        });
+
+        // Add some quick help options
+        this.addMessage({
+            type: 'quick_reply',
+            content: 'How can I help you today?',
+            replies: [
+                'Check Account Balance',
+                'Transaction History', 
+                'Transfer Funds',
+                'Contact Support',
+                'Security Help'
+            ],
+            sender: 'support'
+        });
+
+        this.otlc.info('Help shown');
+        
+        // Dispatch help event
+        this.dispatchEvent(new CustomEvent('chitchat:help-shown', {
+            detail: { component: this },
+            bubbles: true
+        }));
     }
 
     // Public API methods
     clear() {
         this.messages = [];
-        this.container.querySelector('.messages-container').innerHTML = '';
+        const messagesContainer = this.querySelector('.messages-container');
+        if (messagesContainer) {
+            messagesContainer.innerHTML = '';
+        }
+        
+        this.otlc.info('Chat messages cleared');
+        
+        // Dispatch clear event
+        this.dispatchEvent(new CustomEvent('chitchat:cleared', {
+            detail: { component: this },
+            bubbles: true
+        }));
     }
 
     setTheme(theme) {
