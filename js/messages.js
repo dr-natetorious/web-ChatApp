@@ -1,11 +1,11 @@
 /**
  * ChitChat Messages - Web Component-based Message System
- * Extensible message implementations using Web Components
+ * Professional message types with modern features
  * Built with vanilla JavaScript and Bootstrap 5.3
  */
 
 // Base Message Web Component
-class BaseMessageComponent extends HTMLElement {
+class ChitChatBaseMessage extends HTMLElement {
     constructor() {
         super();
         this.messageData = {};
@@ -21,7 +21,7 @@ class BaseMessageComponent extends HTMLElement {
                 this.messageData = JSON.parse(newValue);
                 this.render();
             } catch (error) {
-                console.error('Failed to parse message data:', error);
+                console.error('[ChitChat Messages] Failed to parse message data:', error);
             }
         }
     }
@@ -46,41 +46,117 @@ class BaseMessageComponent extends HTMLElement {
 }
 
 // Text Message Component
-class TextMessageComponent extends BaseMessageComponent {
+class ChitChatTextMessage extends ChitChatBaseMessage {
     render() {
         const content = this.messageData.content || '';
         this.innerHTML = `<div class="message-content">${this.escapeHtml(content)}</div>`;
     }
 }
 
-/**
- * Image Message Implementation
- */
-class ImageMessage extends BaseMessage {
-    render(message) {
-        return `
-            <div class="message-rich-content">
-                <img src="${this.escapeHtml(message.url)}" 
-                     alt="${this.escapeHtml(message.alt || 'Image')}" 
-                     class="message-image" 
-                     onclick="window.open('${this.escapeHtml(message.url)}', '_blank')"
-                     loading="lazy">
-                ${message.caption ? `<div class="mt-2">${this.escapeHtml(message.caption)}</div>` : ''}
+// Quick Reply Message Component
+class ChitChatQuickReplyMessage extends ChitChatBaseMessage {
+    render() {
+        const { content = '', replies = [] } = this.messageData;
+        
+        const contentHtml = content ? `<p class="mb-3">${this.escapeHtml(content)}</p>` : '';
+        const repliesHtml = replies.map(reply => 
+            `<button class="btn btn-outline-primary btn-sm quick-reply-btn me-2 mb-2" 
+                     data-reply="${this.escapeHtml(reply)}">
+                ${this.escapeHtml(reply)}
+            </button>`
+        ).join('');
+        
+        this.innerHTML = `
+            <div class="quick-reply-container">
+                ${contentHtml}
+                <div class="quick-replies">
+                    ${repliesHtml}
+                </div>
             </div>
         `;
+
+        this.querySelectorAll('.quick-reply-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const reply = e.target.dataset.reply;
+                this.dispatchEvent(new CustomEvent('quick-reply-selected', {
+                    detail: { reply },
+                    bubbles: true
+                }));
+            });
+        });
+    }
+}
+
+// Image Message Component
+class ChitChatImageMessage extends ChitChatBaseMessage {
+    render() {
+        const { url = '', caption = '', alt = 'Message image' } = this.messageData;
+        
+        const captionHtml = caption ? 
+            `<div class="image-caption mt-2">
+                <small class="text-muted">${this.escapeHtml(caption)}</small>
+            </div>` : '';
+        
+        this.innerHTML = `
+            <div class="image-message-container">
+                <img src="${this.escapeHtml(url)}" 
+                     alt="${this.escapeHtml(alt)}" 
+                     class="img-fluid rounded message-image"
+                     style="max-width: 100%; height: auto; cursor: pointer;"
+                     loading="lazy">
+                ${captionHtml}
+            </div>
+        `;
+
+        const img = this.querySelector('.message-image');
+        if (img) {
+            img.addEventListener('click', () => {
+                this.showImageModal(url, caption || alt);
+            });
+        }
     }
 
-    validate(message) {
-        return message && message.url && typeof message.url === 'string';
-    }
+    showImageModal(url, caption) {
+        // Create modal overlay
+        const modalHtml = `
+            <div class="modal fade" id="imageModal" tabindex="-1" aria-hidden="true">
+                <div class="modal-dialog modal-lg modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Image Preview</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body text-center">
+                            <img src="${this.escapeHtml(url)}" class="img-fluid" alt="${this.escapeHtml(caption)}">
+                            ${caption ? `<p class="mt-3 text-muted">${this.escapeHtml(caption)}</p>` : ''}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
 
-    getRequiredFields() {
-        return ['url'];
+        // Remove existing modal if present
+        const existingModal = document.getElementById('imageModal');
+        if (existingModal) {
+            existingModal.remove();
+        }
+
+        // Add modal to document
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        
+        // Show modal
+        const modal = new bootstrap.Modal(document.getElementById('imageModal'));
+        modal.show();
+
+        // Clean up when modal is hidden
+        document.getElementById('imageModal').addEventListener('hidden.bs.modal', function() {
+            this.remove();
+        });
     }
 }
 
 // Enhanced Table Message Component with Professional Features
-class TableMessageComponent extends BaseMessageComponent {
+class ChitChatTableMessage extends ChitChatBaseMessage {
     constructor() {
         super();
         this.sortColumn = null;
@@ -318,7 +394,7 @@ class TableMessageComponent extends BaseMessageComponent {
             const btn = this.querySelector('.export-excel-btn');
             if (btn) {
                 const originalHtml = btn.innerHTML;
-                btn.innerHTML = '<i class="bi bi-check-circle text-success"></i> Exported';
+                btn.innerHTML = '<i class="bi bi-check-circle"></i> Exported';
                 btn.disabled = true;
                 setTimeout(() => {
                     btn.innerHTML = originalHtml;
@@ -329,145 +405,193 @@ class TableMessageComponent extends BaseMessageComponent {
     }
 }
 
-// Quick Reply Message Component
-class QuickReplyMessageComponent extends BaseMessageComponent {
+// Chart Message Component with Chart.js Integration
+class ChitChatChartMessage extends ChitChatBaseMessage {
+    constructor() {
+        super();
+        this.chartInstance = null;
+        this.chartType = 'pie';
+        this.chartData = null;
+        this.chartOptions = {};
+        this.chartId = null;
+        this.isInitialized = false;
+    }
+
     render() {
-        const { content = '', replies = [] } = this.messageData;
+        const { title = '', chartType = 'pie', chartData = {}, chartOptions = {} } = this.messageData;
+        this.chartType = chartType;
+        this.chartData = chartData;
+        this.chartOptions = chartOptions;
         
-        const contentHtml = content ? `<p class="mb-3">${this.escapeHtml(content)}</p>` : '';
-        const repliesHtml = replies.map(reply => 
-            `<button class="btn btn-outline-primary btn-sm quick-reply-btn me-2 mb-2" 
-                     data-reply="${this.escapeHtml(reply)}">
-                ${this.escapeHtml(reply)}
-            </button>`
-        ).join('');
+        // Destroy existing chart if it exists
+        this.destroyChart();
+        
+        const chartId = `chart-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const titleHtml = title ? `<h6 class="chart-title mb-3">${this.escapeHtml(title)}</h6>` : '';
         
         this.innerHTML = `
-            <div class="quick-reply-container">
-                ${contentHtml}
-                <div class="quick-replies">
-                    ${repliesHtml}
+            <div class="chart-message-container">
+                ${titleHtml}
+                <div class="chart-wrapper">
+                    <canvas id="${chartId}" style="max-height: 400px;"></canvas>
                 </div>
             </div>
         `;
 
-        // Add click handlers
-        this.querySelectorAll('.quick-reply-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const reply = e.target.dataset.reply;
-                this.dispatchEvent(new CustomEvent('quick-reply-selected', {
-                    detail: { reply },
-                    bubbles: true
-                }));
-            });
-        });
-    }
-}
-
-// Image Message Component
-class ImageMessageComponent extends BaseMessageComponent {
-    render() {
-        const { url = '', caption = '', alt = 'Message image' } = this.messageData;
+        // Store chartId and reset initialization flag
+        this.chartId = chartId;
+        this.isInitialized = false;
         
-        const captionHtml = caption ? 
-            `<div class="image-caption mt-2">
-                <small class="text-muted">${this.escapeHtml(caption)}</small>
-            </div>` : '';
-        
-        this.innerHTML = `
-            <div class="image-message-container">
-                <img src="${this.escapeHtml(url)}" 
-                     alt="${this.escapeHtml(alt)}" 
-                     class="img-fluid rounded message-image"
-                     style="max-width: 100%; height: auto; cursor: pointer;"
-                     loading="lazy">
-                ${captionHtml}
-            </div>
-        `;
-
-        // Add click handler for image preview
-        const img = this.querySelector('.message-image');
-        if (img) {
-            img.addEventListener('click', () => {
-                this.showImageModal(url, caption || alt);
-            });
+        // If already connected, initialize immediately
+        if (this.isConnected) {
+            this.initializeChart();
         }
     }
 
-    showImageModal(url, caption) {
-        // Create Bootstrap modal for image preview
-        const modalId = `imageModal-${Date.now()}`;
-        const modalHtml = `
-            <div class="modal fade" id="${modalId}" tabindex="-1">
-                <div class="modal-dialog modal-lg modal-dialog-centered">
-                    <div class="modal-content">
-                        <div class="modal-header">
-                            <h5 class="modal-title">${this.escapeHtml(caption)}</h5>
-                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                        </div>
-                        <div class="modal-body text-center">
-                            <img src="${this.escapeHtml(url)}" class="img-fluid" alt="${this.escapeHtml(caption)}">
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
-
-        document.body.insertAdjacentHTML('beforeend', modalHtml);
-        const modal = new bootstrap.Modal(document.getElementById(modalId));
+    connectedCallback() {
+        super.connectedCallback();
         
-        // Clean up modal after it's hidden
-        document.getElementById(modalId).addEventListener('hidden.bs.modal', () => {
-            document.getElementById(modalId).remove();
-        });
-        
-        modal.show();
+        // Only initialize if we have chartId and haven't initialized yet
+        if (this.chartId && !this.isInitialized) {
+            this.initializeChart();
+        }
     }
-}
 
-// Register Web Components with proper error handling
-const componentsToRegister = [
-    { name: 'text-message', class: TextMessageComponent },
-    { name: 'table-message', class: TableMessageComponent },
-    { name: 'quick-reply-message', class: QuickReplyMessageComponent },
-    { name: 'image-message', class: ImageMessageComponent }
-];
+    initializeChart() {
+        // Prevent multiple initializations
+        if (this.isInitialized) {
+            return;
+        }
+        
+        const canvas = this.querySelector(`#${this.chartId}`);
+        if (!canvas) {
+            console.error('[ChitChat Chart] Canvas not found');
+            return;
+        }
 
-componentsToRegister.forEach(({ name, class: ComponentClass }) => {
-    try {
-        if (!customElements.get(name)) {
-            customElements.define(name, ComponentClass);
-            console.log(`[ChitChat Messages] Successfully registered ${name} component`);
+        // Check if Chart.js is available, if not wait for it
+        if (typeof Chart !== 'undefined') {
+            this.createChart(canvas);
         } else {
-            console.log(`[ChitChat Messages] Component ${name} already registered`);
+            // Wait for Chart.js to load via script load event
+            this.waitForChartJS(canvas);
         }
-    } catch (error) {
-        console.error(`[ChitChat Messages] Failed to register ${name}:`, error);
     }
-});
 
-// Verify all components are registered
-setTimeout(() => {
-    const registered = componentsToRegister.map(({ name }) => ({
-        name,
-        registered: !!customElements.get(name)
-    }));
-    
-    console.log('[ChitChat Messages] Registration verification:', registered);
-    
-    if (registered.every(c => c.registered)) {
-        console.log('[ChitChat Messages] All components successfully registered and verified');
-    } else {
-        console.error('[ChitChat Messages] Some components failed to register:', 
-            registered.filter(c => !c.registered).map(c => c.name));
+    destroyChart() {
+        if (this.chartInstance) {
+            try {
+                this.chartInstance.destroy();
+            } catch (error) {
+                console.warn('[ChitChat Chart] Error destroying chart:', error);
+            }
+            this.chartInstance = null;
+        }
+        this.isInitialized = false;
     }
-}, 100);
 
-// Export for use in main chat component
-window.ChitChatMessageComponents = {
-    TextMessageComponent,
-    TableMessageComponent,
-    QuickReplyMessageComponent,
-    ImageMessageComponent,
-    BaseMessageComponent
-};
+    waitForChartJS(canvas) {
+        // Check if Chart.js is already available
+        if (typeof Chart !== 'undefined') {
+            this.createChart(canvas);
+            return;
+        }
+
+        // Listen for Chart.js load event
+        const chartLoadHandler = () => {
+            if (typeof Chart !== 'undefined') {
+                this.createChart(canvas);
+            } else {
+                console.error('[ChitChat Chart] Chart.js loaded event fired but Chart is undefined');
+                this.showChartError(canvas);
+            }
+        };
+
+        // Listen for the custom chartjs-loaded event
+        window.addEventListener('chartjs-loaded', chartLoadHandler, { once: true });
+
+        // Fallback: if Chart.js is already loaded but event was missed
+        if (document.readyState === 'complete') {
+            // Page is fully loaded, Chart.js should be available or failed to load
+            setTimeout(() => {
+                if (typeof Chart === 'undefined') {
+                    window.removeEventListener('chartjs-loaded', chartLoadHandler);
+                    this.showChartError(canvas);
+                }
+            }, 100);
+        }
+    }
+
+    showChartError(canvas) {
+        canvas.parentElement.innerHTML = `
+            <div class="alert alert-warning">
+                <i class="bi bi-exclamation-triangle"></i>
+                Chart.js library not available
+            </div>
+        `;
+    }
+
+    createChart(canvas) {
+        // Prevent multiple chart creation
+        if (this.isInitialized) {
+            return;
+        }
+
+        const ctx = canvas.getContext('2d');
+        
+        // Professional chart configuration
+        const config = {
+            type: this.chartType,
+            data: this.chartData,
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            padding: 20,
+                            usePointStyle: true
+                        }
+                    },
+                    tooltip: {
+                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                        titleColor: '#fff',
+                        bodyColor: '#fff',
+                        borderColor: 'rgba(255, 255, 255, 0.1)',
+                        borderWidth: 1
+                    }
+                },
+                ...this.chartOptions
+            }
+        };
+
+        try {
+            this.chartInstance = new Chart(ctx, config);
+            this.isInitialized = true;
+            
+            // Dispatch custom event when chart is ready
+            this.dispatchEvent(new CustomEvent('chart-ready', {
+                detail: { chartInstance: this.chartInstance },
+                bubbles: true
+            }));
+        } catch (error) {
+            console.error('[ChitChat Chart] Failed to create chart:', error);
+            this.showChartError(canvas);
+        }
+    }
+
+    disconnectedCallback() {
+        this.destroyChart();
+    }
+}
+
+// Register all message components
+customElements.define('chitchat-base-message', ChitChatBaseMessage);
+customElements.define('chitchat-text-message', ChitChatTextMessage);
+customElements.define('chitchat-table-message', ChitChatTableMessage);
+customElements.define('chitchat-quick-reply-message', ChitChatQuickReplyMessage);
+customElements.define('chitchat-image-message', ChitChatImageMessage);
+customElements.define('chitchat-chart-message', ChitChatChartMessage);
+
+console.log('[ChitChat Messages] All message components registered successfully');
