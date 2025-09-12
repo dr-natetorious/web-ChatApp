@@ -3,126 +3,7 @@
 {% block title %}SecureBank - Online Banking Dashboard{% endblock %}
 
 {% block extra_css %}
-<style>
-    :root {
-        --bank-primary: #1e3a8a;
-        --bank-secondary: #3b82f6;
-        --bank-success: #059669;
-        --bank-warning: #d97706;
-        --bank-danger: #dc2626;
-    }
-
-    .navbar-dark {
-        background-color: var(--bank-primary) !important;
-    }
-
-    .account-card {
-        border-left: 4px solid var(--bank-secondary);
-        transition: transform 0.2s ease-in-out;
-    }
-
-    .account-            // Demo: Show rich message examples
-            setTimeout(() => {
-                // Make sure the component is ready
-                if (chatWidget && typeof chatWidget.addTable === 'function') {
-                    chatWidget.addTable(
-                        'Recent Transactions',
-                        ['Date', 'Description', 'Amount'],
-                        [
-                            ['Sep 11', 'Coffee Shop', '-$5.75'],
-                            ['Sep 10', 'Salary Deposit', '+$3,500.00'],
-                            ['Sep 9', 'Gas Station', '-$45.67']
-                        ]
-                    );
-                } else {
-                    console.error('ChitChat component addTable method not available', { 
-                        chatWidget, 
-                        hasAddTable: chatWidget && typeof chatWidget.addTable === 'function'
-                    });
-                }
-            }, 2000);
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    }
-
-    .balance-amount {
-        font-size: 1.8rem;
-        font-weight: 700;
-        color: var(--bank-primary);
-    }
-
-    .transaction-item {
-        border-bottom: 1px solid #e5e7eb;
-        padding: 12px 0;
-    }
-
-    .transaction-item:last-child {
-        border-bottom: none;
-    }
-
-    .transaction-amount.positive {
-        color: var(--bank-success);
-    }
-
-    .transaction-amount.negative {
-        color: var(--bank-danger);
-    }
-
-    .quick-action-btn {
-        border-radius: 12px;
-        padding: 15px;
-        text-decoration: none;
-        transition: all 0.3s ease;
-    }
-
-    .quick-action-btn:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 6px 20px rgba(0,0,0,0.15);
-    }
-
-    .security-badge {
-        background: linear-gradient(45deg, var(--bank-success), #10b981);
-        color: white;
-        padding: 4px 12px;
-        border-radius: 20px;
-        font-size: 0.8rem;
-    }
-
-    .chart-container {
-        position: relative;
-        height: 300px;
-        background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
-        border-radius: 12px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-    
-    /* Banking-specific sidebar customizations */
-    .sidebar .sidebar-link:hover {
-        background: rgba(255,255,255,0.2);
-        transform: translateX(6px);
-    }
-    
-    .security-alert {
-        position: absolute;
-        bottom: 20px;
-        left: 16px;
-        right: 16px;
-        background: rgba(255,255,255,0.1);
-        border: 1px solid rgba(255,255,255,0.2);
-        border-radius: 8px;
-        padding: 12px;
-        color: rgba(255,255,255,0.9);
-        font-size: 12px;
-        opacity: 0;
-        transition: opacity 0.3s ease 0.2s;
-    }
-    
-    .sidebar:hover .security-alert {
-        opacity: 1;
-    }
-</style>
+<link rel="stylesheet" href="/css/banking.css">
 {% endblock %}
 
 {% block sidebar %}
@@ -480,14 +361,14 @@
 <!-- Chat Widget -->
 <chitchat-component 
     id="chat-widget" 
-    style="position: fixed; bottom: 80px; right: 20px; z-index: 1050; display: none;"
+    class="chat-widget"
     current-user='{"id": "user", "name": "John Doe", "avatar": null}'
     theme="light"
     enable-rich-messages="true">
 </chitchat-component>
 
 <!-- Chat Toggle Button -->
-<button id="chat-toggle" class="btn btn-primary" style="position: fixed; bottom: 20px; right: 20px; z-index: 1051; border-radius: 50%; width: 60px; height: 60px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+<button id="chat-toggle" class="btn btn-primary chat-toggle-btn">
     <i class="bi bi-chat-dots-fill fs-4"></i>
 </button>
 {% endblock %}
