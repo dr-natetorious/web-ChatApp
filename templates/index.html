@@ -21,7 +21,26 @@
         transition: transform 0.2s ease-in-out;
     }
 
-    .account-card:hover {
+    .account-            // Demo: Show rich message examples
+            setTimeout(() => {
+                // Make sure the component is ready
+                if (chatWidget && typeof chatWidget.addTable === 'function') {
+                    chatWidget.addTable(
+                        'Recent Transactions',
+                        ['Date', 'Description', 'Amount'],
+                        [
+                            ['Sep 11', 'Coffee Shop', '-$5.75'],
+                            ['Sep 10', 'Salary Deposit', '+$3,500.00'],
+                            ['Sep 9', 'Gas Station', '-$45.67']
+                        ]
+                    );
+                } else {
+                    console.error('ChitChat component addTable method not available', { 
+                        chatWidget, 
+                        hasAddTable: chatWidget && typeof chatWidget.addTable === 'function'
+                    });
+                }
+            }, 2000);
         transform: translateY(-2px);
         box-shadow: 0 4px 12px rgba(0,0,0,0.15);
     }
@@ -474,29 +493,124 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="/js/messages.js"></script>
-<script src="/js/chitchat.js"></script>
+    <!-- ChitChat Component -->
+    <script src="/js/chitchat.js"></script>
 <script>
-    // Initialize ChitChat component
+    // Initialize ChitChat component with event-driven demo
     let chatWidget = null;
     let isChatOpen = false;
+
+    document.addEventListener('DOMContentLoaded', () => {
+        console.log('[ChitChat Init] DOM loaded');
+        
+        // Get the chat widget reference
+        chatWidget = document.getElementById('chat-widget');
+        
+        // Set up event listeners for the chat component
+        setupChatEventListeners();
+    });
+
+    function setupChatEventListeners() {
+        // Listen for when the chat component is ready
+        chatWidget.addEventListener('chitchat:ready', (event) => {
+            console.log('[ChitChat] Component ready');
+        });
+        
+        // Listen for when the chat is shown to start demo
+        chatWidget.addEventListener('chitchat:shown', (event) => {
+            console.log('[ChitChat] Chat shown, starting demo');
+            startChatDemo(event.detail.component);
+        });
+        
+        // Listen for message events for additional demo interactions
+        chatWidget.addEventListener('chitchat:message-sent', (event) => {
+            console.log('[ChitChat] User sent message:', event.detail.content);
+            // Could trigger contextual responses based on user input
+        });
+        
+        // Listen for quick reply selections
+        chatWidget.addEventListener('chitchat:quick-reply-selected', (event) => {
+            console.log('[ChitChat] Quick reply selected:', event.detail.reply);
+            handleQuickReplyDemo(event.detail.reply, chatWidget);
+        });
+    }
+
+    function startChatDemo(chatComponent) {
+        // Chain demo messages using the component's methods
+        chatComponent.addMessage({
+            type: 'text',
+            content: 'Hello! I\'m here to help you with your banking needs. How can I assist you today?',
+            sender: 'support'
+        });
+        
+        // Chain the quick reply after a brief pause
+        setTimeout(() => {
+            chatComponent.addQuickReply(
+                'Here are some common questions I can help with:',
+                ['Check Balance', 'Transfer Money', 'Pay Bills', 'Account Security']
+            );
+        }, 800);
+        
+        // Show table example after another pause
+        setTimeout(() => {
+            chatComponent.addTable(
+                'Recent Transactions',
+                ['Date', 'Description', 'Amount'],
+                [
+                    ['Sep 11', 'Coffee Shop', '-$5.75'],
+                    ['Sep 10', 'Salary Deposit', '+$3,500.00'],
+                    ['Sep 9', 'Gas Station', '-$45.67']
+                ]
+            );
+        }, 1600);
+    }
+
+    function handleQuickReplyDemo(reply, chatComponent) {
+        // Respond contextually to quick reply selections
+        const responses = {
+            'Check Balance': {
+                type: 'text',
+                content: 'Your current account balance is $2,449.58. Would you like to see a detailed breakdown?'
+            },
+            'Transfer Money': {
+                type: 'text', 
+                content: 'I can help you transfer money. Who would you like to send money to?'
+            },
+            'Pay Bills': {
+                type: 'text',
+                content: 'Here are your upcoming bills. Which one would you like to pay?'
+            },
+            'Account Security': {
+                type: 'text',
+                content: 'Your account security is important. Would you like to review your security settings?'
+            }
+        };
+        
+        const response = responses[reply];
+        if (response) {
+            setTimeout(() => {
+                chatComponent.addMessage({
+                    ...response,
+                    sender: 'support'
+                });
+            }, 500);
+        }
+    }
 
     document.getElementById('chat-toggle').addEventListener('click', function() {
         const chatContainer = document.getElementById('chat-widget');
         const toggleButton = document.getElementById('chat-toggle');
         
         if (!isChatOpen) {
-            // Get the web component and show chat
-            chatWidget = chatContainer;
-            
-            // Open chat with smooth animation
-            chatContainer.style.display = 'block';
+            // Open chat with smooth animation using the component's show method
             chatContainer.style.transform = 'scale(0.3)';
             chatContainer.style.opacity = '0';
             
-            // Force a reflow then animate
-            chatContainer.offsetHeight;
+            // Use the component's show method which will trigger events
+            chatContainer.show();
             
+            // Animate the entrance
+            chatContainer.offsetHeight; // Force reflow
             chatContainer.style.transition = 'all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)';
             chatContainer.style.transform = 'scale(1)';
             chatContainer.style.opacity = '1';
@@ -508,47 +622,21 @@
             
             toggleButton.innerHTML = '<i class="bi bi-x-lg fs-4"></i>';
             isChatOpen = true;
-            
-            // Demo: Add some sample messages after showing
-            setTimeout(() => {
-                chatWidget.addMessage({
-                    type: 'text',
-                    content: 'Hello! I\'m here to help you with your banking needs. How can I assist you today?',
-                    sender: 'support'
-                });
-                
-                chatWidget.addQuickReply(
-                    'Here are some common questions I can help with:',
-                    ['Check Balance', 'Transfer Money', 'Pay Bills', 'Account Security']
-                );
-            }, 1000);
-            
-            // Demo: Show rich message examples
-            setTimeout(() => {
-                chatWidget.addTable(
-                    'Recent Transactions',
-                    ['Date', 'Description', 'Amount'],
-                    [
-                        ['Sep 11', 'Coffee Shop', '-$5.75'],
-                        ['Sep 10', 'Salary Deposit', '+$3,500.00'],
-                        ['Sep 9', 'Gas Station', '-$45.67']
-                    ]
-                );
-            }, 3000);
+
         } else {
-            // Close chat with animation
+            // Close chat with smooth animation
             chatContainer.style.transition = 'all 0.3s ease-out';
-            chatContainer.style.transform = 'scale(0.8)';
+            chatContainer.style.transform = 'scale(0.3)';
             chatContainer.style.opacity = '0';
             
             setTimeout(() => {
-                chatContainer.style.display = 'none';
+                chatContainer.hide(); // Use the component's hide method
                 chatContainer.style.transition = '';
                 chatContainer.style.transform = '';
                 chatContainer.style.opacity = '';
             }, 300);
             
-            toggleButton.innerHTML = '<i class="bi bi-chat-dots-fill fs-4"></i>';
+            toggleButton.innerHTML = '<i class="bi bi-chat-dots fs-4"></i>';
             isChatOpen = false;
         }
     });

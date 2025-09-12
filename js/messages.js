@@ -1,48 +1,42 @@
 /**
- * ChitChat Message System
- * Extensible message type implementations and contracts
+ * ChitChat Messages - Web Component-based Message System
+ * Extensible message implementations using Web Components
+ * Built with vanilla JavaScript and Bootstrap 5.3
  */
 
-/**
- * Base Message Interface
- * All message types should implement this contract
- */
-class BaseMessage {
-    constructor(chatComponent) {
-        this.chatComponent = chatComponent;
+// Base Message Web Component
+class BaseMessageComponent extends HTMLElement {
+    constructor() {
+        super();
+        this.messageData = {};
     }
 
-    /**
-     * Render the message content
-     * @param {Object} message - Message data
-     * @returns {string} HTML content
-     */
-    render(message) {
-        throw new Error('render() method must be implemented by message type');
+    static get observedAttributes() {
+        return ['data-message'];
     }
 
-    /**
-     * Validate message data
-     * @param {Object} message - Message data to validate
-     * @returns {boolean} True if valid
-     */
-    validate(message) {
-        return message && typeof message.content !== 'undefined';
+    attributeChangedCallback(name, oldValue, newValue) {
+        if (name === 'data-message' && newValue) {
+            try {
+                this.messageData = JSON.parse(newValue);
+                this.render();
+            } catch (error) {
+                console.error('Failed to parse message data:', error);
+            }
+        }
     }
 
-    /**
-     * Get required fields for this message type
-     * @returns {Array<string>} Array of required field names
-     */
-    getRequiredFields() {
-        return ['content'];
+    connectedCallback() {
+        if (this.hasAttribute('data-message')) {
+            this.attributeChangedCallback('data-message', null, this.getAttribute('data-message'));
+        }
     }
 
-    /**
-     * Escape HTML content for security
-     * @param {string} text - Text to escape
-     * @returns {string} Escaped HTML
-     */
+    render() {
+        // Override in subclasses
+        this.innerHTML = '<div class="message-content">Base message component</div>';
+    }
+
     escapeHtml(text) {
         if (typeof text !== 'string') return '';
         const div = document.createElement('div');
@@ -51,16 +45,11 @@ class BaseMessage {
     }
 }
 
-/**
- * Text Message Implementation
- */
-class TextMessage extends BaseMessage {
-    render(message) {
-        return this.escapeHtml(message.content);
-    }
-
-    validate(message) {
-        return super.validate(message) && typeof message.content === 'string';
+// Text Message Component
+class TextMessageComponent extends BaseMessageComponent {
+    render() {
+        const content = this.messageData.content || '';
+        this.innerHTML = `<div class="message-content">${this.escapeHtml(content)}</div>`;
     }
 }
 
@@ -90,327 +79,395 @@ class ImageMessage extends BaseMessage {
     }
 }
 
-/**
- * Table Message Implementation
- */
-class TableMessage extends BaseMessage {
-    render(message) {
-        const headers = message.headers || [];
-        const rows = message.rows || [];
+// Enhanced Table Message Component with Professional Features
+class TableMessageComponent extends BaseMessageComponent {
+    constructor() {
+        super();
+        this.sortColumn = null;
+        this.sortDirection = 'asc';
+        this.filterText = '';
+        this.originalRows = [];
+    }
+
+    render() {
+        const { title = '', headers = [], rows = [] } = this.messageData;
+        this.originalRows = [...rows];
         
-        return `
-            <div class="message-rich-content">
-                ${message.title ? `<strong class="table-title">${this.escapeHtml(message.title)}</strong>` : ''}
+        const titleHtml = title ? `<h6 class="table-title mb-3">${this.escapeHtml(title)}</h6>` : '';
+        const tableId = `table-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        
+        this.innerHTML = `
+            <div class="table-message-container">
+                ${titleHtml}
+                
+                <!-- Table Controls -->
+                <div class="table-controls mb-3 d-flex justify-content-between align-items-center flex-wrap">
+                    <div class="table-filter d-flex align-items-center">
+                        <label class="form-label me-2 mb-0 small text-muted">Filter:</label>
+                        <input type="text" class="form-control form-control-sm filter-input" 
+                               placeholder="Type to filter..." style="max-width: 200px;">
+                    </div>
+                    
+                    <div class="table-actions">
+                        <div class="btn-group" role="group">
+                            <button class="btn btn-outline-secondary btn-sm clear-filter-btn" 
+                                    title="Clear filter">
+                                <i class="bi bi-x-circle"></i>
+                            </button>
+                            <button class="btn btn-outline-success btn-sm export-excel-btn" 
+                                    title="Export to Excel">
+                                <i class="bi bi-file-earmark-spreadsheet"></i>
+                                Excel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Responsive Table Wrapper -->
                 <div class="table-responsive">
-                    <table class="table table-sm message-table">
-                        ${headers.length ? `
-                            <thead>
-                                <tr>
-                                    ${headers.map(h => `<th>${this.escapeHtml(h)}</th>`).join('')}
-                                </tr>
-                            </thead>
-                        ` : ''}
-                        <tbody>
-                            ${rows.map(row => `
-                                <tr>
-                                    ${(Array.isArray(row) ? row : Object.values(row)).map(cell => 
-                                        `<td>${this.escapeHtml(String(cell))}</td>`
-                                    ).join('')}
-                                </tr>
-                            `).join('')}
+                    <table class="table table-hover table-sm sortable-table" id="${tableId}">
+                        <thead class="table-light">
+                            <tr>
+                                ${headers.map((header, index) => `
+                                    <th scope="col" class="sortable-header position-relative" 
+                                        data-column="${index}" style="cursor: pointer; user-select: none;">
+                                        ${this.escapeHtml(header)}
+                                        <i class="bi bi-arrow-down-up sort-icon ms-1 text-muted small"></i>
+                                    </th>
+                                `).join('')}
+                            </tr>
+                        </thead>
+                        <tbody class="table-body">
+                            ${this.renderTableRows(rows)}
                         </tbody>
                     </table>
                 </div>
-            </div>
-        `;
-    }
-
-    validate(message) {
-        return message && Array.isArray(message.rows);
-    }
-
-    getRequiredFields() {
-        return ['rows'];
-    }
-}
-
-/**
- * System Message Implementation
- */
-class SystemMessage extends BaseMessage {
-    render(message) {
-        const icon = message.icon || 'info-circle';
-        const variant = message.variant || 'info'; // info, warning, error, success
-        
-        return `
-            <div class="system-message system-message-${variant}">
-                <i class="bi bi-${icon} me-2"></i>
-                ${this.escapeHtml(message.content)}
-            </div>
-        `;
-    }
-
-    validate(message) {
-        return super.validate(message);
-    }
-}
-
-/**
- * Quick Reply Message Implementation
- */
-class QuickReplyMessage extends BaseMessage {
-    render(message) {
-        const replies = Array.isArray(message.replies) ? message.replies : [];
-        
-        return `
-            <div class="quick-reply-message">
-                ${this.escapeHtml(message.content)}
-                <div class="quick-replies mt-2">
-                    ${replies.map(reply => {
-                        const replyText = typeof reply === 'string' ? reply : reply.text;
-                        const replyValue = typeof reply === 'string' ? reply : reply.value;
-                        return `<button class="quick-reply-btn btn btn-outline-primary btn-sm me-2 mb-2" 
-                                       data-value="${this.escapeHtml(replyValue)}">
-                                    ${this.escapeHtml(replyText)}
-                                </button>`;
-                    }).join('')}
+                
+                <!-- Table Info -->
+                <div class="table-info mt-2">
+                    <small class="text-muted">
+                        <span class="row-count">${rows.length}</span> rows
+                        <span class="filtered-info" style="display: none;">
+                            (filtered from <span class="total-rows">${rows.length}</span> total)
+                        </span>
+                    </small>
                 </div>
             </div>
         `;
+
+        this.setupEventListeners();
     }
 
-    validate(message) {
-        return super.validate(message) && Array.isArray(message.replies) && message.replies.length > 0;
+    renderTableRows(rows) {
+        return rows.map(row => `
+            <tr>
+                ${row.map(cell => `<td>${this.escapeHtml(String(cell))}</td>`).join('')}
+            </tr>
+        `).join('');
     }
 
-    getRequiredFields() {
-        return ['content', 'replies'];
-    }
-}
-
-/**
- * File Message Implementation
- */
-class FileMessage extends BaseMessage {
-    render(message) {
-        const fileSize = message.size ? this.formatFileSize(message.size) : '';
-        const fileIcon = this.getFileIcon(message.name || message.url);
+    setupEventListeners() {
+        // Filter functionality
+        const filterInput = this.querySelector('.filter-input');
+        const clearFilterBtn = this.querySelector('.clear-filter-btn');
         
-        return `
-            <div class="message-rich-content file-message">
-                <div class="file-attachment d-flex align-items-center p-3 border rounded">
-                    <i class="bi bi-${fileIcon} fs-4 me-3 text-primary"></i>
-                    <div class="file-info flex-grow-1">
-                        <div class="file-name fw-semibold">${this.escapeHtml(message.name || 'Unnamed file')}</div>
-                        ${fileSize ? `<small class="text-muted">${fileSize}</small>` : ''}
-                    </div>
-                    ${message.url ? `
-                        <a href="${this.escapeHtml(message.url)}" 
-                           class="btn btn-outline-primary btn-sm" 
-                           target="_blank" 
-                           download="${this.escapeHtml(message.name || '')}">
-                            <i class="bi bi-download"></i>
-                        </a>
-                    ` : ''}
-                </div>
-            </div>
-        `;
-    }
-
-    validate(message) {
-        return message && (message.name || message.url);
-    }
-
-    getRequiredFields() {
-        return ['name'];
-    }
-
-    getFileIcon(filename) {
-        if (!filename) return 'file-earmark';
-        
-        const ext = filename.toLowerCase().split('.').pop();
-        const iconMap = {
-            pdf: 'file-earmark-pdf',
-            doc: 'file-earmark-word',
-            docx: 'file-earmark-word',
-            xls: 'file-earmark-excel',
-            xlsx: 'file-earmark-excel',
-            ppt: 'file-earmark-ppt',
-            pptx: 'file-earmark-ppt',
-            jpg: 'file-earmark-image',
-            jpeg: 'file-earmark-image',
-            png: 'file-earmark-image',
-            gif: 'file-earmark-image',
-            mp4: 'file-earmark-play',
-            mp3: 'file-earmark-music',
-            zip: 'file-earmark-zip',
-            txt: 'file-earmark-text'
-        };
-        
-        return iconMap[ext] || 'file-earmark';
-    }
-
-    formatFileSize(bytes) {
-        if (bytes === 0) return '0 Bytes';
-        
-        const k = 1024;
-        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-    }
-}
-
-/**
- * Loading Message Implementation
- */
-class LoadingMessage extends BaseMessage {
-    render(message) {
-        return `
-            <div class="loading-message d-flex align-items-center">
-                <div class="spinner-border spinner-border-sm me-2" role="status">
-                    <span class="visually-hidden">Loading...</span>
-                </div>
-                ${message.content ? this.escapeHtml(message.content) : 'Loading...'}
-            </div>
-        `;
-    }
-
-    validate(message) {
-        return true; // Loading messages don't require content
-    }
-
-    getRequiredFields() {
-        return [];
-    }
-}
-
-/**
- * Message Registry - Central registry for all message types
- */
-class MessageRegistry {
-    constructor() {
-        this.messageTypes = new Map();
-        this.registerDefaultTypes();
-    }
-
-    /**
-     * Register a message type
-     * @param {string} type - Message type name
-     * @param {BaseMessage} messageClass - Message implementation class
-     */
-    registerType(type, messageClass) {
-        if (!(messageClass.prototype instanceof BaseMessage)) {
-            throw new Error(`Message type ${type} must extend BaseMessage`);
+        if (filterInput) {
+            filterInput.addEventListener('input', (e) => {
+                this.filterText = e.target.value.toLowerCase();
+                this.applyFilter();
+            });
         }
-        this.messageTypes.set(type, messageClass);
-    }
 
-    /**
-     * Get message implementation for type
-     * @param {string} type - Message type
-     * @param {Object} chatComponent - Chat component instance
-     * @returns {BaseMessage} Message implementation instance
-     */
-    getMessageImplementation(type, chatComponent) {
-        const MessageClass = this.messageTypes.get(type);
-        if (!MessageClass) {
-            console.warn(`Unknown message type: ${type}, falling back to text`);
-            return new TextMessage(chatComponent);
+        if (clearFilterBtn) {
+            clearFilterBtn.addEventListener('click', () => {
+                filterInput.value = '';
+                this.filterText = '';
+                this.applyFilter();
+            });
         }
-        return new MessageClass(chatComponent);
+
+        // Sort functionality
+        const sortHeaders = this.querySelectorAll('.sortable-header');
+        sortHeaders.forEach(header => {
+            header.addEventListener('click', () => {
+                const column = parseInt(header.dataset.column);
+                this.sortTable(column);
+            });
+        });
+
+        // Excel export functionality
+        const exportBtn = this.querySelector('.export-excel-btn');
+        if (exportBtn) {
+            exportBtn.addEventListener('click', () => this.exportToExcel());
+        }
     }
 
-    /**
-     * Check if message type is registered
-     * @param {string} type - Message type
-     * @returns {boolean}
-     */
-    hasType(type) {
-        return this.messageTypes.has(type);
+    applyFilter() {
+        const filteredRows = this.originalRows.filter(row => {
+            if (!this.filterText) return true;
+            return row.some(cell => 
+                String(cell).toLowerCase().includes(this.filterText)
+            );
+        });
+
+        // Update table body
+        const tbody = this.querySelector('.table-body');
+        if (tbody) {
+            tbody.innerHTML = this.renderTableRows(filteredRows);
+        }
+
+        // Update row count info
+        this.updateRowCountInfo(filteredRows.length);
     }
 
-    /**
-     * Get all registered message types
-     * @returns {Array<string>}
-     */
-    getRegisteredTypes() {
-        return Array.from(this.messageTypes.keys());
+    sortTable(column) {
+        // Update sort state
+        if (this.sortColumn === column) {
+            this.sortDirection = this.sortDirection === 'asc' ? 'desc' : 'asc';
+        } else {
+            this.sortColumn = column;
+            this.sortDirection = 'asc';
+        }
+
+        // Update sort icons
+        this.updateSortIcons(column);
+
+        // Get current filtered rows
+        const tbody = this.querySelector('.table-body');
+        const currentRows = Array.from(tbody.querySelectorAll('tr'));
+        const rowsData = currentRows.map(tr => 
+            Array.from(tr.querySelectorAll('td')).map(td => td.textContent)
+        );
+
+        // Sort the data
+        const sortedRows = rowsData.sort((a, b) => {
+            const aVal = a[column];
+            const bVal = b[column];
+            
+            // Try numeric comparison first
+            const aNum = parseFloat(aVal.replace(/[$,]/g, ''));
+            const bNum = parseFloat(bVal.replace(/[$,]/g, ''));
+            
+            if (!isNaN(aNum) && !isNaN(bNum)) {
+                return this.sortDirection === 'asc' ? aNum - bNum : bNum - aNum;
+            }
+            
+            // Fall back to string comparison
+            const result = aVal.localeCompare(bVal, undefined, { numeric: true });
+            return this.sortDirection === 'asc' ? result : -result;
+        });
+
+        // Update table body
+        tbody.innerHTML = this.renderTableRows(sortedRows);
     }
 
-    /**
-     * Register default message types
-     */
-    registerDefaultTypes() {
-        this.registerType('text', TextMessage);
-        this.registerType('image', ImageMessage);
-        this.registerType('table', TableMessage);
-        this.registerType('system', SystemMessage);
-        this.registerType('quick_reply', QuickReplyMessage);
-        this.registerType('file', FileMessage);
-        this.registerType('loading', LoadingMessage);
+    updateSortIcons(activeColumn) {
+        const headers = this.querySelectorAll('.sortable-header');
+        headers.forEach((header, index) => {
+            const icon = header.querySelector('.sort-icon');
+            if (index === activeColumn) {
+                icon.className = `bi sort-icon ms-1 small ${this.sortDirection === 'asc' ? 'bi-sort-up text-primary' : 'bi-sort-down text-primary'}`;
+            } else {
+                icon.className = 'bi bi-arrow-down-up sort-icon ms-1 text-muted small';
+            }
+        });
     }
-}
 
-/**
- * Message Validation Utilities
- */
-class MessageValidator {
-    /**
-     * Validate a message against its type requirements
-     * @param {Object} message - Message to validate
-     * @param {BaseMessage} messageImpl - Message implementation
-     * @returns {Object} Validation result
-     */
-    static validate(message, messageImpl) {
-        const result = {
-            valid: true,
-            errors: []
-        };
+    updateRowCountInfo(filteredCount) {
+        const rowCountSpan = this.querySelector('.row-count');
+        const filteredInfo = this.querySelector('.filtered-info');
+        const totalRows = this.querySelector('.total-rows');
 
-        // Check required fields
-        const requiredFields = messageImpl.getRequiredFields();
-        for (const field of requiredFields) {
-            if (!(field in message) || message[field] === null || message[field] === undefined) {
-                result.valid = false;
-                result.errors.push(`Required field missing: ${field}`);
+        if (rowCountSpan) rowCountSpan.textContent = filteredCount;
+        if (totalRows) totalRows.textContent = this.originalRows.length;
+
+        if (filteredInfo) {
+            filteredInfo.style.display = filteredCount < this.originalRows.length ? 'inline' : 'none';
+        }
+    }
+
+    exportToExcel() {
+        const { title = 'Table Data', headers = [] } = this.messageData;
+        
+        // Get currently displayed (filtered/sorted) data
+        const tbody = this.querySelector('.table-body');
+        const rows = Array.from(tbody.querySelectorAll('tr')).map(tr => 
+            Array.from(tr.querySelectorAll('td')).map(td => td.textContent)
+        );
+
+        // Create CSV content
+        const csvContent = [
+            headers.join(','),
+            ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+        ].join('\n');
+
+        // Create and download file
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        
+        if (link.download !== undefined) {
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', `${title.replace(/[^a-z0-9]/gi, '_')}_${new Date().toISOString().split('T')[0]}.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            // Show success feedback
+            const btn = this.querySelector('.export-excel-btn');
+            if (btn) {
+                const originalHtml = btn.innerHTML;
+                btn.innerHTML = '<i class="bi bi-check-circle text-success"></i> Exported';
+                btn.disabled = true;
+                setTimeout(() => {
+                    btn.innerHTML = originalHtml;
+                    btn.disabled = false;
+                }, 2000);
             }
         }
-
-        // Use type-specific validation
-        if (!messageImpl.validate(message)) {
-            result.valid = false;
-            result.errors.push(`Message failed type-specific validation for type: ${message.type}`);
-        }
-
-        return result;
     }
 }
 
-// Create global registry instance
-const messageRegistry = new MessageRegistry();
+// Quick Reply Message Component
+class QuickReplyMessageComponent extends BaseMessageComponent {
+    render() {
+        const { content = '', replies = [] } = this.messageData;
+        
+        const contentHtml = content ? `<p class="mb-3">${this.escapeHtml(content)}</p>` : '';
+        const repliesHtml = replies.map(reply => 
+            `<button class="btn btn-outline-primary btn-sm quick-reply-btn me-2 mb-2" 
+                     data-reply="${this.escapeHtml(reply)}">
+                ${this.escapeHtml(reply)}
+            </button>`
+        ).join('');
+        
+        this.innerHTML = `
+            <div class="quick-reply-container">
+                ${contentHtml}
+                <div class="quick-replies">
+                    ${repliesHtml}
+                </div>
+            </div>
+        `;
 
-// Export for use
-window.ChitChatMessages = {
-    BaseMessage,
-    TextMessage,
-    ImageMessage,
-    TableMessage,
-    SystemMessage,
-    QuickReplyMessage,
-    FileMessage,
-    LoadingMessage,
-    MessageRegistry,
-    MessageValidator,
-    registry: messageRegistry
+        // Add click handlers
+        this.querySelectorAll('.quick-reply-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const reply = e.target.dataset.reply;
+                this.dispatchEvent(new CustomEvent('quick-reply-selected', {
+                    detail: { reply },
+                    bubbles: true
+                }));
+            });
+        });
+    }
+}
+
+// Image Message Component
+class ImageMessageComponent extends BaseMessageComponent {
+    render() {
+        const { url = '', caption = '', alt = 'Message image' } = this.messageData;
+        
+        const captionHtml = caption ? 
+            `<div class="image-caption mt-2">
+                <small class="text-muted">${this.escapeHtml(caption)}</small>
+            </div>` : '';
+        
+        this.innerHTML = `
+            <div class="image-message-container">
+                <img src="${this.escapeHtml(url)}" 
+                     alt="${this.escapeHtml(alt)}" 
+                     class="img-fluid rounded message-image"
+                     style="max-width: 100%; height: auto; cursor: pointer;"
+                     loading="lazy">
+                ${captionHtml}
+            </div>
+        `;
+
+        // Add click handler for image preview
+        const img = this.querySelector('.message-image');
+        if (img) {
+            img.addEventListener('click', () => {
+                this.showImageModal(url, caption || alt);
+            });
+        }
+    }
+
+    showImageModal(url, caption) {
+        // Create Bootstrap modal for image preview
+        const modalId = `imageModal-${Date.now()}`;
+        const modalHtml = `
+            <div class="modal fade" id="${modalId}" tabindex="-1">
+                <div class="modal-dialog modal-lg modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">${this.escapeHtml(caption)}</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body text-center">
+                            <img src="${this.escapeHtml(url)}" class="img-fluid" alt="${this.escapeHtml(caption)}">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        const modal = new bootstrap.Modal(document.getElementById(modalId));
+        
+        // Clean up modal after it's hidden
+        document.getElementById(modalId).addEventListener('hidden.bs.modal', () => {
+            document.getElementById(modalId).remove();
+        });
+        
+        modal.show();
+    }
+}
+
+// Register Web Components with proper error handling
+const componentsToRegister = [
+    { name: 'text-message', class: TextMessageComponent },
+    { name: 'table-message', class: TableMessageComponent },
+    { name: 'quick-reply-message', class: QuickReplyMessageComponent },
+    { name: 'image-message', class: ImageMessageComponent }
+];
+
+componentsToRegister.forEach(({ name, class: ComponentClass }) => {
+    try {
+        if (!customElements.get(name)) {
+            customElements.define(name, ComponentClass);
+            console.log(`[ChitChat Messages] Successfully registered ${name} component`);
+        } else {
+            console.log(`[ChitChat Messages] Component ${name} already registered`);
+        }
+    } catch (error) {
+        console.error(`[ChitChat Messages] Failed to register ${name}:`, error);
+    }
+});
+
+// Verify all components are registered
+setTimeout(() => {
+    const registered = componentsToRegister.map(({ name }) => ({
+        name,
+        registered: !!customElements.get(name)
+    }));
+    
+    console.log('[ChitChat Messages] Registration verification:', registered);
+    
+    if (registered.every(c => c.registered)) {
+        console.log('[ChitChat Messages] All components successfully registered and verified');
+    } else {
+        console.error('[ChitChat Messages] Some components failed to register:', 
+            registered.filter(c => !c.registered).map(c => c.name));
+    }
+}, 100);
+
+// Export for use in main chat component
+window.ChitChatMessageComponents = {
+    TextMessageComponent,
+    TableMessageComponent,
+    QuickReplyMessageComponent,
+    ImageMessageComponent,
+    BaseMessageComponent
 };
-
-// Also export individual classes for easier access
-window.BaseMessage = BaseMessage;
-window.TextMessage = TextMessage;
-window.ImageMessage = ImageMessage;
-window.TableMessage = TableMessage;
-window.SystemMessage = SystemMessage;
-window.QuickReplyMessage = QuickReplyMessage;
-window.FileMessage = FileMessage;
-window.LoadingMessage = LoadingMessage;

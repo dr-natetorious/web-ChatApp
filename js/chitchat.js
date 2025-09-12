@@ -11,8 +11,12 @@ class ChitChatComponent extends HTMLElement {
         // Lightweight OTLC integration with safe fallbacks
         this.otlc = this.initObservability();
         
+        // Define message components immediately
+        this.defineMessageComponents();
+        
         // Initialize properties
         this.messages = [];
+        this.messageQueue = []; // Queue messages until component is ready
         this.messageHandlers = new Map();
         this.isTyping = false;
         this.eventListeners = {};
@@ -39,6 +43,396 @@ class ChitChatComponent extends HTMLElement {
         
         // Simple metrics tracking
         this.otlc.counter('chitchat.created');
+    }
+
+    defineMessageComponents() {
+        // Define message web components within this chat instance scope
+        
+        // Base Message Component
+        if (!customElements.get('chitchat-base-message')) {
+            class ChitChatBaseMessage extends HTMLElement {
+                constructor() {
+                    super();
+                    this.messageData = {};
+                }
+
+                connectedCallback() {
+                    if (this.hasAttribute('data-message')) {
+                        try {
+                            this.messageData = JSON.parse(this.getAttribute('data-message'));
+                            this.render();
+                        } catch (error) {
+                            console.error('Failed to parse message data:', error);
+                        }
+                    }
+                }
+
+                render() {
+                    this.innerHTML = '<div class="message-content">Base message component</div>';
+                }
+
+                escapeHtml(text) {
+                    if (typeof text !== 'string') return '';
+                    const div = document.createElement('div');
+                    div.textContent = text;
+                    return div.innerHTML;
+                }
+            }
+            customElements.define('chitchat-base-message', ChitChatBaseMessage);
+        }
+
+        // Text Message Component
+        if (!customElements.get('chitchat-text-message')) {
+            class ChitChatTextMessage extends customElements.get('chitchat-base-message') {
+                render() {
+                    const content = this.messageData.content || '';
+                    this.innerHTML = `<div class="message-content">${this.escapeHtml(content)}</div>`;
+                }
+            }
+            customElements.define('chitchat-text-message', ChitChatTextMessage);
+        }
+
+        // Table Message Component with Professional Features
+        if (!customElements.get('chitchat-table-message')) {
+            class ChitChatTableMessage extends customElements.get('chitchat-base-message') {
+                constructor() {
+                    super();
+                    this.sortColumn = null;
+                    this.sortDirection = 'asc';
+                    this.filterText = '';
+                    this.originalRows = [];
+                }
+
+                render() {
+                    const { title = '', headers = [], rows = [] } = this.messageData;
+                    this.originalRows = [...rows];
+                    
+                    const titleHtml = title ? `<h6 class="table-title mb-3">${this.escapeHtml(title)}</h6>` : '';
+                    const tableId = `table-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                    
+                    this.innerHTML = `
+                        <div class="table-message-container">
+                            ${titleHtml}
+                            
+                            <!-- Table Controls -->
+                            <div class="table-controls mb-3 d-flex justify-content-between align-items-center flex-wrap">
+                                <div class="table-filter d-flex align-items-center">
+                                    <label class="form-label me-2 mb-0 small text-muted">Filter:</label>
+                                    <input type="text" class="form-control form-control-sm filter-input" 
+                                           placeholder="Type to filter..." style="max-width: 200px;">
+                                </div>
+                                
+                                <div class="table-actions">
+                                    <div class="btn-group" role="group">
+                                        <button class="btn btn-outline-secondary btn-sm clear-filter-btn" 
+                                                title="Clear filter">
+                                            <i class="bi bi-x-circle"></i>
+                                        </button>
+                                        <button class="btn btn-outline-success btn-sm export-excel-btn" 
+                                                title="Export to Excel">
+                                            <i class="bi bi-file-earmark-spreadsheet"></i>
+                                            Excel
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Responsive Table Wrapper -->
+                            <div class="table-responsive">
+                                <table class="table table-hover table-sm sortable-table" id="${tableId}">
+                                    <thead class="table-light">
+                                        <tr>
+                                            ${headers.map((header, index) => `
+                                                <th scope="col" class="sortable-header position-relative" 
+                                                    data-column="${index}" style="cursor: pointer; user-select: none;">
+                                                    ${this.escapeHtml(header)}
+                                                    <i class="bi bi-arrow-down-up sort-icon ms-1 text-muted small"></i>
+                                                </th>
+                                            `).join('')}
+                                        </tr>
+                                    </thead>
+                                    <tbody class="table-body">
+                                        ${this.renderTableRows(rows)}
+                                    </tbody>
+                                </table>
+                            </div>
+                            
+                            <!-- Table Info -->
+                            <div class="table-info mt-2">
+                                <small class="text-muted">
+                                    <span class="row-count">${rows.length}</span> rows
+                                    <span class="filtered-info" style="display: none;">
+                                        (filtered from <span class="total-rows">${rows.length}</span> total)
+                                    </span>
+                                </small>
+                            </div>
+                        </div>
+                    `;
+
+                    this.setupEventListeners();
+                }
+
+                renderTableRows(rows) {
+                    return rows.map(row => `
+                        <tr>
+                            ${row.map(cell => `<td>${this.escapeHtml(String(cell))}</td>`).join('')}
+                        </tr>
+                    `).join('');
+                }
+
+                setupEventListeners() {
+                    // Filter functionality
+                    const filterInput = this.querySelector('.filter-input');
+                    const clearFilterBtn = this.querySelector('.clear-filter-btn');
+                    
+                    if (filterInput) {
+                        filterInput.addEventListener('input', (e) => {
+                            this.filterText = e.target.value.toLowerCase();
+                            this.applyFilter();
+                        });
+                    }
+
+                    if (clearFilterBtn) {
+                        clearFilterBtn.addEventListener('click', () => {
+                            filterInput.value = '';
+                            this.filterText = '';
+                            this.applyFilter();
+                        });
+                    }
+
+                    // Sort functionality
+                    const sortHeaders = this.querySelectorAll('.sortable-header');
+                    sortHeaders.forEach(header => {
+                        header.addEventListener('click', () => {
+                            const column = parseInt(header.dataset.column);
+                            this.sortTable(column);
+                        });
+                    });
+
+                    // Excel export functionality
+                    const exportBtn = this.querySelector('.export-excel-btn');
+                    if (exportBtn) {
+                        exportBtn.addEventListener('click', () => this.exportToExcel());
+                    }
+                }
+
+                applyFilter() {
+                    const filteredRows = this.originalRows.filter(row => {
+                        if (!this.filterText) return true;
+                        return row.some(cell => 
+                            String(cell).toLowerCase().includes(this.filterText)
+                        );
+                    });
+
+                    const tbody = this.querySelector('.table-body');
+                    if (tbody) {
+                        tbody.innerHTML = this.renderTableRows(filteredRows);
+                    }
+
+                    this.updateRowCountInfo(filteredRows.length);
+                }
+
+                sortTable(column) {
+                    if (this.sortColumn === column) {
+                        this.sortDirection = this.sortDirection === 'asc' ? 'desc' : 'asc';
+                    } else {
+                        this.sortColumn = column;
+                        this.sortDirection = 'asc';
+                    }
+
+                    this.updateSortIcons(column);
+
+                    const tbody = this.querySelector('.table-body');
+                    const currentRows = Array.from(tbody.querySelectorAll('tr'));
+                    const rowsData = currentRows.map(tr => 
+                        Array.from(tr.querySelectorAll('td')).map(td => td.textContent)
+                    );
+
+                    const sortedRows = rowsData.sort((a, b) => {
+                        const aVal = a[column];
+                        const bVal = b[column];
+                        
+                        const aNum = parseFloat(aVal.replace(/[$,]/g, ''));
+                        const bNum = parseFloat(bVal.replace(/[$,]/g, ''));
+                        
+                        if (!isNaN(aNum) && !isNaN(bNum)) {
+                            return this.sortDirection === 'asc' ? aNum - bNum : bNum - aNum;
+                        }
+                        
+                        const result = aVal.localeCompare(bVal, undefined, { numeric: true });
+                        return this.sortDirection === 'asc' ? result : -result;
+                    });
+
+                    tbody.innerHTML = this.renderTableRows(sortedRows);
+                }
+
+                updateSortIcons(activeColumn) {
+                    const headers = this.querySelectorAll('.sortable-header');
+                    headers.forEach((header, index) => {
+                        const icon = header.querySelector('.sort-icon');
+                        if (index === activeColumn) {
+                            icon.className = `bi sort-icon ms-1 small ${this.sortDirection === 'asc' ? 'bi-sort-up text-primary' : 'bi-sort-down text-primary'}`;
+                        } else {
+                            icon.className = 'bi bi-arrow-down-up sort-icon ms-1 text-muted small';
+                        }
+                    });
+                }
+
+                updateRowCountInfo(filteredCount) {
+                    const rowCountSpan = this.querySelector('.row-count');
+                    const filteredInfo = this.querySelector('.filtered-info');
+                    const totalRows = this.querySelector('.total-rows');
+
+                    if (rowCountSpan) rowCountSpan.textContent = filteredCount;
+                    if (totalRows) totalRows.textContent = this.originalRows.length;
+
+                    if (filteredInfo) {
+                        filteredInfo.style.display = filteredCount < this.originalRows.length ? 'inline' : 'none';
+                    }
+                }
+
+                exportToExcel() {
+                    const { title = 'Table Data', headers = [] } = this.messageData;
+                    
+                    const tbody = this.querySelector('.table-body');
+                    const rows = Array.from(tbody.querySelectorAll('tr')).map(tr => 
+                        Array.from(tr.querySelectorAll('td')).map(td => td.textContent)
+                    );
+
+                    const csvContent = [
+                        headers.join(','),
+                        ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+                    ].join('\n');
+
+                    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                    const link = document.createElement('a');
+                    
+                    if (link.download !== undefined) {
+                        const url = URL.createObjectURL(blob);
+                        link.setAttribute('href', url);
+                        link.setAttribute('download', `${title.replace(/[^a-z0-9]/gi, '_')}_${new Date().toISOString().split('T')[0]}.csv`);
+                        link.style.visibility = 'hidden';
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        
+                        const btn = this.querySelector('.export-excel-btn');
+                        if (btn) {
+                            const originalHtml = btn.innerHTML;
+                            btn.innerHTML = '<i class="bi bi-check-circle text-success"></i> Exported';
+                            btn.disabled = true;
+                            setTimeout(() => {
+                                btn.innerHTML = originalHtml;
+                                btn.disabled = false;
+                            }, 2000);
+                        }
+                    }
+                }
+            }
+            customElements.define('chitchat-table-message', ChitChatTableMessage);
+        }
+
+        // Quick Reply Message Component
+        if (!customElements.get('chitchat-quick-reply-message')) {
+            class ChitChatQuickReplyMessage extends customElements.get('chitchat-base-message') {
+                render() {
+                    const { content = '', replies = [] } = this.messageData;
+                    
+                    const contentHtml = content ? `<p class="mb-3">${this.escapeHtml(content)}</p>` : '';
+                    const repliesHtml = replies.map(reply => 
+                        `<button class="btn btn-outline-primary btn-sm quick-reply-btn me-2 mb-2" 
+                                 data-reply="${this.escapeHtml(reply)}">
+                            ${this.escapeHtml(reply)}
+                        </button>`
+                    ).join('');
+                    
+                    this.innerHTML = `
+                        <div class="quick-reply-container">
+                            ${contentHtml}
+                            <div class="quick-replies">
+                                ${repliesHtml}
+                            </div>
+                        </div>
+                    `;
+
+                    this.querySelectorAll('.quick-reply-btn').forEach(btn => {
+                        btn.addEventListener('click', (e) => {
+                            const reply = e.target.dataset.reply;
+                            this.dispatchEvent(new CustomEvent('quick-reply-selected', {
+                                detail: { reply },
+                                bubbles: true
+                            }));
+                        });
+                    });
+                }
+            }
+            customElements.define('chitchat-quick-reply-message', ChitChatQuickReplyMessage);
+        }
+
+        // Image Message Component
+        if (!customElements.get('chitchat-image-message')) {
+            class ChitChatImageMessage extends customElements.get('chitchat-base-message') {
+                render() {
+                    const { url = '', caption = '', alt = 'Message image' } = this.messageData;
+                    
+                    const captionHtml = caption ? 
+                        `<div class="image-caption mt-2">
+                            <small class="text-muted">${this.escapeHtml(caption)}</small>
+                        </div>` : '';
+                    
+                    this.innerHTML = `
+                        <div class="image-message-container">
+                            <img src="${this.escapeHtml(url)}" 
+                                 alt="${this.escapeHtml(alt)}" 
+                                 class="img-fluid rounded message-image"
+                                 style="max-width: 100%; height: auto; cursor: pointer;"
+                                 loading="lazy">
+                            ${captionHtml}
+                        </div>
+                    `;
+
+                    const img = this.querySelector('.message-image');
+                    if (img) {
+                        img.addEventListener('click', () => {
+                            this.showImageModal(url, caption || alt);
+                        });
+                    }
+                }
+
+                showImageModal(url, caption) {
+                    const modalId = `imageModal-${Date.now()}`;
+                    const modalHtml = `
+                        <div class="modal fade" id="${modalId}" tabindex="-1">
+                            <div class="modal-dialog modal-lg modal-dialog-centered">
+                                <div class="modal-content">
+                                    <div class="modal-header">
+                                        <h5 class="modal-title">${this.escapeHtml(caption)}</h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                    </div>
+                                    <div class="modal-body text-center">
+                                        <img src="${this.escapeHtml(url)}" class="img-fluid" alt="${this.escapeHtml(caption)}">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+
+                    document.body.insertAdjacentHTML('beforeend', modalHtml);
+                    const modal = new bootstrap.Modal(document.getElementById(modalId));
+                    
+                    document.getElementById(modalId).addEventListener('hidden.bs.modal', () => {
+                        document.getElementById(modalId).remove();
+                    });
+                    
+                    modal.show();
+                }
+            }
+            customElements.define('chitchat-image-message', ChitChatImageMessage);
+        }
+
+        this.otlc.debug('Message components defined', { 
+            components: ['chitchat-text-message', 'chitchat-table-message', 'chitchat-quick-reply-message', 'chitchat-image-message'] 
+        });
     }
 
     // Lightweight observability initialization
@@ -134,17 +528,30 @@ class ChitChatComponent extends HTMLElement {
     }
 
     connectedCallback() {
-        try {
-            this.parseAttributes();
-            this.init();
-            this.isInitialized = true;
-            
-            this.otlc.info('ChitChat connected');
-            
-        } catch (error) {
-            this.otlc.error('ChitChat connection failed', { error: error.message });
-            throw error;
-        }
+        this.otlc.debug('ChitChat component connected to DOM');
+        
+        // Initialize the component properly
+        this.createChatInterface();
+        this.setupEventListeners();
+        this.registerDefaultMessageTypes();
+        
+        // Mark as initialized
+        this.isInitialized = true;
+        
+        // Process any queued messages
+        this.processMessageQueue();
+        
+        this.otlc.info('ChitChat initialized successfully', { 
+            messages: this.messages.length,
+            queuedMessages: this.messageQueue.length,
+            options: this.options 
+        });
+        
+        // Dispatch ready event after everything is initialized
+        this.dispatchEvent(new CustomEvent('chitchat:ready', {
+            detail: { component: this },
+            bubbles: true
+        }));
     }
 
     disconnectedCallback() {
@@ -1103,10 +1510,27 @@ class ChitChatComponent extends HTMLElement {
         this.messageHandlers.set(type, handler);
     }
 
+    processMessageQueue() {
+        if (this.messageQueue.length > 0) {
+            this.otlc.debug('Processing queued messages', { count: this.messageQueue.length });
+            
+            // Process all queued messages
+            const queuedMessages = [...this.messageQueue];
+            this.messageQueue = []; // Clear the queue
+            
+            queuedMessages.forEach(messageData => {
+                this.addMessage(messageData);
+            });
+        }
+    }
+
     addMessage(messageData) {
         try {
             if (!this.isInitialized) {
-                this.otlc.warn('Message added before initialization', { type: messageData.type });
+                this.otlc.warn('Message queued before initialization', { type: messageData.type });
+                // Queue the message until component is ready
+                this.messageQueue.push(messageData);
+                return null;
             }
             
             // Create and validate message
@@ -1151,32 +1575,53 @@ class ChitChatComponent extends HTMLElement {
             messageElement.dataset.messageId = message.id;
             messageElement.dataset.messageType = message.type;
 
-            // Get the message handler and render content
-            const handler = this.messageHandlers.get(message.type);
-            let content;
+            // Create message bubble container
+            const messageBubble = document.createElement('div');
+            messageBubble.className = 'message-bubble';
+
+            // Create web component for message
+            const componentMap = {
+                'text': 'chitchat-text-message',
+                'table': 'chitchat-table-message', 
+                'quick_reply': 'chitchat-quick-reply-message',
+                'image': 'chitchat-image-message'
+            };
             
-            if (handler) {
-                try {
-                    content = handler(message);
-                } catch (error) {
-                    this.otlc.error(`Error rendering message type ${message.type}`, { error: error.message });
-                    content = this.escapeHtml(`[Error rendering ${message.type} message]`);
+            const componentName = componentMap[message.type];
+            this.otlc.debug(`Creating component: ${componentName} for message type: ${message.type}`);
+            
+            if (componentName) {
+                this.otlc.debug(`Creating element ${componentName}`);
+                const messageComponent = document.createElement(componentName);
+                messageComponent.setAttribute('data-message', JSON.stringify(message));
+                
+                // Handle quick reply events
+                if (message.type === 'quick_reply') {
+                    messageComponent.addEventListener('quick-reply-selected', (e) => {
+                        this.handleQuickReply(e.detail.reply);
+                    });
                 }
+                
+                messageBubble.appendChild(messageComponent);
+                
             } else {
-                this.otlc.warn(`No handler found for message type: ${message.type}`);
-                content = this.escapeHtml(message.content || `[Unsupported message type: ${message.type}]`);
+                // Fallback to text content
+                this.otlc.warn(`No web component mapping found for message type: ${message.type}, using fallback`);
+                const fallbackDiv = document.createElement('div');
+                fallbackDiv.className = 'message-content';
+                fallbackDiv.textContent = message.content || `[Unsupported message type: ${message.type}]`;
+                messageBubble.appendChild(fallbackDiv);
             }
             
-            messageElement.innerHTML = `
-                <div class="message-bubble">
-                    ${content}
-                </div>
-                ${this.options.showTimestamps ? `
-                    <div class="message-timestamp">
-                        ${this.formatTimestamp(message.timestamp)}
-                    </div>
-                ` : ''}
-            `;
+            messageElement.appendChild(messageBubble);
+
+            // Add timestamp if enabled
+            if (this.options.showTimestamps) {
+                const timestampDiv = document.createElement('div');
+                timestampDiv.className = 'message-timestamp';
+                timestampDiv.textContent = this.formatTimestamp(message.timestamp);
+                messageElement.appendChild(timestampDiv);
+            }
 
             messagesContainer.appendChild(messageElement);
 
@@ -1344,6 +1789,39 @@ class ChitChatComponent extends HTMLElement {
         }
     }
 
+    handleQuickReply(reply) {
+        try {
+            // Send the quick reply as a user message
+            this.addMessage({
+                type: 'text',
+                content: reply,
+                sender: this.options.currentUser.id
+            });
+
+            // Dispatch quick reply event
+            this.dispatchEvent(new CustomEvent('chitchat:quick-reply-selected', {
+                detail: { reply, user: this.options.currentUser },
+                bubbles: true
+            }));
+            
+            this.otlc.counter('chitchat.quick_reply.selected');
+            this.otlc.debug('Quick reply selected', { reply });
+            
+            // Simulate response if enabled
+            if (this.options.showTypingIndicator) {
+                this.showTypingIndicator();
+                setTimeout(() => {
+                    this.hideTypingIndicator();
+                    this.simulateResponse(reply);
+                }, 1000 + Math.random() * 1500);
+            }
+            
+        } catch (error) {
+            this.otlc.error('Failed to handle quick reply', { error: error.message, reply });
+            throw error;
+        }
+    }
+
     simulateResponse(userMessage) {
         // Simple response simulation for demo
         const responses = [
@@ -1494,6 +1972,34 @@ class ChitChatComponent extends HTMLElement {
             caption: caption,
             sender: 'support'
         });
+    }
+
+    // === VISIBILITY CONTROL METHODS ===
+    
+    show() {
+        this.style.display = 'block';
+        
+        // Dispatch event to notify that chat is now visible
+        this.dispatchEvent(new CustomEvent('chitchat:shown', {
+            detail: { component: this },
+            bubbles: true
+        }));
+        
+        this.otlc.counter('chitchat.shown');
+        return this;
+    }
+    
+    hide() {
+        this.style.display = 'none';
+        
+        // Dispatch event to notify that chat is now hidden
+        this.dispatchEvent(new CustomEvent('chitchat:hidden', {
+            detail: { component: this },
+            bubbles: true
+        }));
+        
+        this.otlc.counter('chitchat.hidden');
+        return this;
     }
 
     // Web Component lifecycle methods
