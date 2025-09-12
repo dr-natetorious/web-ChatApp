@@ -29,6 +29,7 @@ app.include_router(web_router, tags=["Web Pages"])
 
 # Mount static files
 app.mount("/js", StaticFiles(directory="js"), name="javascript")
+app.mount("/css", StaticFiles(directory="css"), name="stylesheets")
 # app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Pydantic models

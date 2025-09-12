@@ -1,0 +1,397 @@
+/**
+ * ChitChat Component Styles
+ * Professional chat widget styling with Bootstrap 5.3 integration
+ */
+
+/* === CHAT WIDGET POSITIONING & ANIMATIONS === */
+
+#chat-widget {
+    transform-origin: bottom right;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#chat-toggle {
+    transition: all 0.3s ease;
+    border: none;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+#chat-toggle:hover {
+    transform: scale(1.1);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+}
+
+/* === RESPONSIVE POSITIONING === */
+
+@media (min-width: 769px) {
+    /* Desktop and laptop screens */
+    #chat-widget {
+        bottom: 80px !important;
+        right: 24px !important;
+        width: 380px;
+        height: 500px;
+    }
+    
+    #chat-toggle {
+        bottom: 24px !important;
+        right: 24px !important;
+        width: 60px;
+        height: 60px;
+    }
+}
+
+@media (max-width: 768px) {
+    /* Mobile - full screen */
+    #chat-widget {
+        bottom: 0 !important;
+        right: 0 !important;
+        left: 0 !important;
+        top: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        border-radius: 0 !important;
+    }
+    
+    #chat-toggle {
+        bottom: 16px !important;
+        right: 16px !important;
+        width: 50px !important;
+        height: 50px !important;
+    }
+}
+
+/* === CHAT ANIMATIONS === */
+
+@keyframes chatSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(100%) scale(0.8);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+@keyframes chatSlideOut {
+    from {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+    to {
+        opacity: 0;
+        transform: translateY(100%) scale(0.8);
+    }
+}
+
+@keyframes messageSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* === CHITCHAT COMPONENT STRUCTURE === */
+
+.chitchat-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+    overflow: hidden;
+    border: 1px solid #e5e7eb;
+}
+
+.chitchat-header {
+    background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%);
+    color: white;
+    padding: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: between;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.chitchat-header.compact {
+    padding: 0.75rem;
+}
+
+.chat-avatar .avatar-placeholder {
+    width: 40px;
+    height: 40px;
+    font-size: 1.2rem;
+}
+
+.chitchat-header h6 {
+    margin: 0;
+    font-weight: 600;
+}
+
+.chitchat-header small {
+    opacity: 0.9;
+}
+
+/* === MESSAGES AREA === */
+
+.messages-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1rem;
+    background: #f8fafc;
+    scroll-behavior: smooth;
+}
+
+.message {
+    margin-bottom: 1rem;
+    animation: messageSlideIn 0.3s ease-out;
+}
+
+.message.sent {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.message.received {
+    display: flex;
+    justify-content: flex-start;
+}
+
+.message.system {
+    display: flex;
+    justify-content: center;
+}
+
+.message-bubble {
+    max-width: 85%;
+    padding: 0.75rem 1rem;
+    border-radius: 1rem;
+    word-wrap: break-word;
+    position: relative;
+}
+
+.message.sent .message-bubble {
+    background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+    color: white;
+    border-bottom-right-radius: 0.25rem;
+}
+
+.message.received .message-bubble {
+    background: white;
+    color: #374151;
+    border: 1px solid #e5e7eb;
+    border-bottom-left-radius: 0.25rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.message.system .message-bubble {
+    background: #f3f4f6;
+    color: #6b7280;
+    border: 1px solid #d1d5db;
+    font-size: 0.875rem;
+    text-align: center;
+    max-width: 70%;
+}
+
+.message-timestamp {
+    font-size: 0.75rem;
+    color: #9ca3af;
+    margin-top: 0.25rem;
+    text-align: center;
+}
+
+/* === TYPING INDICATOR === */
+
+.typing-indicator {
+    display: flex;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    background: white;
+    border-radius: 1rem;
+    margin-bottom: 1rem;
+    border: 1px solid #e5e7eb;
+    max-width: 80px;
+}
+
+.typing-dots {
+    display: flex;
+    gap: 4px;
+}
+
+.typing-dot {
+    width: 8px;
+    height: 8px;
+    background: #9ca3af;
+    border-radius: 50%;
+    animation: typingPulse 1.4s infinite;
+}
+
+.typing-dot:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.typing-dot:nth-child(3) {
+    animation-delay: 0.4s;
+}
+
+@keyframes typingPulse {
+    0%, 60%, 100% {
+        opacity: 0.3;
+        transform: scale(1);
+    }
+    30% {
+        opacity: 1;
+        transform: scale(1.2);
+    }
+}
+
+/* === INPUT AREA === */
+
+.chitchat-input-container {
+    padding: 1rem;
+    background: white;
+    border-top: 1px solid #e5e7eb;
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-end;
+}
+
+.chitchat-input {
+    flex: 1;
+    border: 1px solid #d1d5db;
+    border-radius: 1.5rem;
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+    line-height: 1.25;
+    resize: none;
+    max-height: 120px;
+    transition: border-color 0.2s ease;
+}
+
+.chitchat-input:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.chitchat-send-btn {
+    background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+    border: none;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.chitchat-send-btn:hover {
+    transform: scale(1.1);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.chitchat-send-btn:disabled {
+    opacity: 0.5;
+    transform: none;
+    cursor: not-allowed;
+}
+
+/* === QUICK ACTIONS === */
+
+.chitchat-quick-actions {
+    padding: 0.5rem 1rem;
+    background: #f8fafc;
+    border-top: 1px solid #e5e7eb;
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.chitchat-quick-action {
+    background: white;
+    border: 1px solid #d1d5db;
+    border-radius: 1rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    color: #374151;
+    text-decoration: none;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.chitchat-quick-action:hover {
+    background: #3b82f6;
+    color: white;
+    border-color: #3b82f6;
+    transform: translateY(-1px);
+    text-decoration: none;
+}
+
+/* === THEME VARIATIONS === */
+
+.chitchat-container[data-theme="dark"] {
+    background: #1f2937;
+    color: white;
+}
+
+.chitchat-container[data-theme="dark"] .chitchat-header {
+    background: linear-gradient(135deg, #374151 0%, #1f2937 100%);
+}
+
+.chitchat-container[data-theme="dark"] .messages-container {
+    background: #111827;
+}
+
+.chitchat-container[data-theme="dark"] .message.received .message-bubble {
+    background: #374151;
+    color: #f9fafb;
+    border-color: #4b5563;
+}
+
+.chitchat-container[data-theme="dark"] .chitchat-input-container {
+    background: #1f2937;
+    border-color: #374151;
+}
+
+.chitchat-container[data-theme="dark"] .chitchat-input {
+    background: #374151;
+    color: white;
+    border-color: #4b5563;
+}
+
+.chitchat-container[data-theme="dark"] .chitchat-input::placeholder {
+    color: #9ca3af;
+}
+
+/* === MOBILE OPTIMIZATIONS === */
+
+@media (max-width: 480px) {
+    .message-bubble {
+        max-width: 90%;
+        font-size: 0.875rem;
+    }
+    
+    .chitchat-input-container {
+        padding: 0.75rem;
+    }
+    
+    .chitchat-input {
+        font-size: 0.875rem;
+        padding: 0.625rem 0.875rem;
+    }
+    
+    .chitchat-send-btn {
+        width: 36px;
+        height: 36px;
+    }
+}

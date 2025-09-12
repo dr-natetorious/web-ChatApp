@@ -493,8 +493,6 @@
 {% endblock %}
 
 {% block extra_js %}
-    <!-- ChitChat Component -->
-    <script src="/js/chitchat.js"></script>
 <script>
     // Initialize ChitChat component with event-driven demo
     let chatWidget = null;
@@ -536,6 +534,15 @@
     }
 
     function startChatDemo(chatComponent) {
+        // Ensure the component is properly initialized
+        if (!chatComponent || typeof chatComponent.addMessage !== 'function') {
+            console.error('[ChitChat Demo] Component not ready for demo', { 
+                component: chatComponent,
+                hasAddMessage: chatComponent && typeof chatComponent.addMessage === 'function'
+            });
+            return;
+        }
+        
         // Chain demo messages using the component's methods
         chatComponent.addMessage({
             type: 'text',
@@ -545,27 +552,72 @@
         
         // Chain the quick reply after a brief pause
         setTimeout(() => {
-            chatComponent.addQuickReply(
-                'Here are some common questions I can help with:',
-                ['Check Balance', 'Transfer Money', 'Pay Bills', 'Account Security']
-            );
+            if (chatComponent && typeof chatComponent.addQuickReply === 'function') {
+                chatComponent.addQuickReply(
+                    'Here are some common questions I can help with:',
+                    ['Check Balance', 'Transfer Money', 'Pay Bills', 'Account Security']
+                );
+            }
         }, 800);
         
         // Show table example after another pause
         setTimeout(() => {
-            chatComponent.addTable(
-                'Recent Transactions',
-                ['Date', 'Description', 'Amount'],
-                [
-                    ['Sep 11', 'Coffee Shop', '-$5.75'],
-                    ['Sep 10', 'Salary Deposit', '+$3,500.00'],
-                    ['Sep 9', 'Gas Station', '-$45.67']
-                ]
-            );
+            if (chatComponent && typeof chatComponent.addTable === 'function') {
+                chatComponent.addTable(
+                    'Recent Transactions',
+                    ['Date', 'Description', 'Amount'],
+                    [
+                        ['Sep 11', 'Coffee Shop', '-$5.75'],
+                        ['Sep 10', 'Salary Deposit', '+$3,500.00'],
+                        ['Sep 9', 'Gas Station', '-$45.67']
+                    ]
+                );
+            }
         }, 1600);
+        
+        // Show chart example after table
+        setTimeout(() => {
+            if (chatComponent && typeof chatComponent.addChart === 'function') {
+                chatComponent.addChart(
+                    'Monthly Spending by Category',
+                    'doughnut',
+                    {
+                        labels: ['Food & Dining', 'Transportation', 'Shopping', 'Utilities', 'Entertainment'],
+                        datasets: [{
+                            data: [450, 230, 180, 120, 80],
+                            backgroundColor: [
+                                '#3b82f6',
+                                '#10b981',
+                                '#f59e0b',
+                                '#ef4444',
+                                '#8b5cf6'
+                            ],
+                            borderWidth: 2,
+                            borderColor: '#ffffff'
+                        }]
+                    },
+                    {
+                        plugins: {
+                            legend: {
+                                position: 'bottom'
+                            }
+                        }
+                    }
+                );
+            }
+        }, 2400);
     }
 
     function handleQuickReplyDemo(reply, chatComponent) {
+        // Ensure the component is properly initialized
+        if (!chatComponent || typeof chatComponent.addMessage !== 'function') {
+            console.error('[ChitChat Demo] Component not ready for quick reply demo', { 
+                component: chatComponent,
+                hasAddMessage: chatComponent && typeof chatComponent.addMessage === 'function'
+            });
+            return;
+        }
+        
         // Respond contextually to quick reply selections
         const responses = {
             'Check Balance': {

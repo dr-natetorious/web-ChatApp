@@ -430,21 +430,316 @@ class ChitChatComponent extends HTMLElement {
             customElements.define('chitchat-image-message', ChitChatImageMessage);
         }
 
+        // Chart Message Component
+        if (!customElements.get('chitchat-chart-message')) {
+            class ChitChatChartMessage extends customElements.get('chitchat-base-message') {
+                constructor() {
+                    super();
+                    this.chartInstance = null;
+                    this.chartType = 'pie'; // Default chart type
+                    this.chartData = null;
+                    this.chartOptions = {};
+                }
+
+                static get observedAttributes() {
+                    return ['data-chart-type', 'data-chart-data', 'data-chart-options', 'data-title'];
+                }
+
+                attributeChangedCallback(name, oldValue, newValue) {
+                    if (oldValue !== newValue) {
+                        switch (name) {
+                            case 'data-chart-type':
+                                this.chartType = newValue || 'pie';
+                                break;
+                            case 'data-chart-data':
+                                try {
+                                    this.chartData = JSON.parse(newValue);
+                                } catch (e) {
+                                    console.error('Invalid chart data JSON:', e);
+                                    this.chartData = null;
+                                }
+                                break;
+                            case 'data-chart-options':
+                                try {
+                                    this.chartOptions = JSON.parse(newValue);
+                                } catch (e) {
+                                    console.error('Invalid chart options JSON:', e);
+                                    this.chartOptions = {};
+                                }
+                                break;
+                            case 'data-title':
+                                this.updateTitle(newValue);
+                                break;
+                        }
+                        if (name.startsWith('data-chart-')) {
+                            this.renderChart();
+                        }
+                    }
+                }
+
+                connectedCallback() {
+                    super.connectedCallback();
+                    // Extract chart data from messageData after base component processes it
+                    if (this.messageData) {
+                        this.chartType = this.messageData.chartType || 'pie';
+                        this.chartData = this.messageData.chartData || null;
+                        this.chartOptions = this.messageData.chartOptions || {};
+                    }
+                    
+                    this.render();
+                    
+                    // Wait for Chart.js to be available
+                    if (typeof Chart === 'undefined') {
+                        this.showLoading();
+                        this.waitForChart();
+                    } else {
+                        this.renderChart();
+                    }
+                }
+
+                disconnectedCallback() {
+                    if (this.chartInstance) {
+                        this.chartInstance.destroy();
+                        this.chartInstance = null;
+                    }
+                }
+
+                async waitForChart() {
+                    let attempts = 0;
+                    const maxAttempts = 50; // 5 seconds max wait
+
+                    const checkChart = () => {
+                        if (typeof Chart !== 'undefined') {
+                            this.renderChart();
+                            return;
+                        }
+
+                        attempts++;
+                        if (attempts < maxAttempts) {
+                            setTimeout(checkChart, 100);
+                        } else {
+                            this.showError('Chart.js library not available');
+                        }
+                    };
+
+                    checkChart();
+                }
+
+                render() {
+                    const title = this.messageData?.title || 'Chart';
+                    
+                    this.innerHTML = `
+                        <div class="chart-message-wrapper">
+                            <div class="chart-message-header">
+                                <h6 class="chart-message-title">
+                                    <i class="bi bi-bar-chart"></i>
+                                    ${this.escapeHtml(title)}
+                                </h6>
+                            </div>
+                            <div class="chart-container">
+                                <canvas class="chart-canvas" width="400" height="300"></canvas>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                showLoading() {
+                    const container = this.querySelector('.chart-container');
+                    if (container) {
+                        container.innerHTML = `
+                            <div class="chart-loading">
+                                <div class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></div>
+                                Loading chart...
+                            </div>
+                        `;
+                    }
+                }
+
+                showError(message) {
+                    const container = this.querySelector('.chart-container');
+                    if (container) {
+                        container.innerHTML = `
+                            <div class="chart-error">
+                                <i class="bi bi-exclamation-triangle me-2"></i>
+                                ${message}
+                            </div>
+                        `;
+                    }
+                }
+
+                updateTitle(title) {
+                    const titleElement = this.querySelector('.chart-message-title');
+                    if (titleElement) {
+                        titleElement.innerHTML = `
+                            <i class="bi bi-bar-chart"></i>
+                            ${title}
+                        `;
+                    }
+                }
+
+                renderChart() {
+                    if (!this.chartData || typeof Chart === 'undefined') {
+                        return;
+                    }
+
+                    const canvas = this.querySelector('.chart-canvas');
+                    if (!canvas) {
+                        return;
+                    }
+
+                    // Destroy existing chart if present
+                    if (this.chartInstance) {
+                        this.chartInstance.destroy();
+                    }
+
+                    const ctx = canvas.getContext('2d');
+                    
+                    // Default professional styling based on chart type
+                    const defaultOptions = this.getDefaultOptions(this.chartType);
+                    const mergedOptions = this.mergeOptions(defaultOptions, this.chartOptions);
+
+                    try {
+                        this.chartInstance = new Chart(ctx, {
+                            type: this.chartType,
+                            data: this.chartData,
+                            options: mergedOptions
+                        });
+                    } catch (error) {
+                        console.error('Error creating chart:', error);
+                        this.showError('Failed to create chart');
+                    }
+                }
+
+                getDefaultOptions(type) {
+                    const commonOptions = {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'bottom',
+                                labels: {
+                                    padding: 20,
+                                    usePointStyle: true,
+                                    font: {
+                                        size: 12,
+                                        family: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+                                    }
+                                }
+                            },
+                            tooltip: {
+                                backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                                titleColor: '#fff',
+                                bodyColor: '#fff',
+                                borderColor: '#3b82f6',
+                                borderWidth: 1,
+                                cornerRadius: 8,
+                                padding: 12,
+                                titleFont: {
+                                    size: 14,
+                                    weight: '600'
+                                },
+                                bodyFont: {
+                                    size: 13
+                                }
+                            }
+                        }
+                    };
+
+                    switch (type) {
+                        case 'pie':
+                        case 'doughnut':
+                            return {
+                                ...commonOptions,
+                                plugins: {
+                                    ...commonOptions.plugins,
+                                    legend: {
+                                        ...commonOptions.plugins.legend,
+                                        position: 'right'
+                                    }
+                                }
+                            };
+
+                        case 'bar':
+                        case 'line':
+                            return {
+                                ...commonOptions,
+                                scales: {
+                                    x: {
+                                        grid: {
+                                            color: '#e5e7eb',
+                                            lineWidth: 1
+                                        },
+                                        ticks: {
+                                            color: '#6b7280',
+                                            font: {
+                                                size: 11
+                                            }
+                                        }
+                                    },
+                                    y: {
+                                        grid: {
+                                            color: '#e5e7eb',
+                                            lineWidth: 1
+                                        },
+                                        ticks: {
+                                            color: '#6b7280',
+                                            font: {
+                                                size: 11
+                                            }
+                                        }
+                                    }
+                                }
+                            };
+
+                        default:
+                            return commonOptions;
+                    }
+                }
+
+                mergeOptions(defaults, custom) {
+                    // Deep merge options objects
+                    const merge = (target, source) => {
+                        for (const key in source) {
+                            if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
+                                target[key] = target[key] || {};
+                                merge(target[key], source[key]);
+                            } else {
+                                target[key] = source[key];
+                            }
+                        }
+                        return target;
+                    };
+
+                    return merge(JSON.parse(JSON.stringify(defaults)), custom);
+                }
+
+                // Helper method to set chart data programmatically
+                setChartData(data, type = null, options = null) {
+                    this.chartData = data;
+                    if (type) this.chartType = type;
+                    if (options) this.chartOptions = options;
+                    this.renderChart();
+                }
+
+                // Helper method to update chart with animation
+                updateChart(data) {
+                    if (this.chartInstance && data) {
+                        this.chartInstance.data = data;
+                        this.chartInstance.update('active');
+                    }
+                }
+            }
+            customElements.define('chitchat-chart-message', ChitChatChartMessage);
+        }
+
         this.otlc.debug('Message components defined', { 
-            components: ['chitchat-text-message', 'chitchat-table-message', 'chitchat-quick-reply-message', 'chitchat-image-message'] 
+            components: ['chitchat-text-message', 'chitchat-table-message', 'chitchat-quick-reply-message', 'chitchat-image-message', 'chitchat-chart-message'] 
         });
     }
 
     // Lightweight observability initialization
     initObservability() {
-        // Try to use existing OTLC if available, otherwise create lightweight fallback
-        const otlc = (typeof window !== 'undefined' && window.otlc) || null;
-        
-        if (otlc) {
-            return otlc;
-        }
-        
-        // Lightweight no-op fallback that won't break anything
+        // Create lightweight logging and metrics fallback
         return {
             startSpan: (name, attrs = {}) => ({ 
                 setStatus: () => {}, 
@@ -1477,30 +1772,6 @@ class ChitChatComponent extends HTMLElement {
             return `${content}<div class="quick-replies">${replies}</div>`;
         });
         
-        // Try to use advanced ChitChatMessages if available (for extensibility)
-        if (typeof window.ChitChatMessages !== 'undefined') {
-            const registry = window.ChitChatMessages.registry;
-            
-            // Register additional message types from registry
-            for (const type of registry.getRegisteredTypes()) {
-                if (!this.messageHandlers.has(type)) {
-                    this.registerMessageType(type, (message) => {
-                        const messageImpl = registry.getMessageImplementation(type, this);
-                        
-                        // Validate message before rendering
-                        const validation = window.ChitChatMessages.MessageValidator.validate(message, messageImpl);
-                        if (!validation.valid) {
-                            this.otlc.warn(`Message validation failed for type ${type}`, { errors: validation.errors });
-                            // Fall back to text message
-                            return this.escapeHtml(`[Invalid ${type} message: ${validation.errors.join(', ')}]`);
-                        }
-                        
-                        return messageImpl.render(message);
-                    });
-                }
-            }
-        }
-        
         this.otlc.debug('Message handlers registered', { 
             types: Array.from(this.messageHandlers.keys()) 
         });
@@ -1511,6 +1782,12 @@ class ChitChatComponent extends HTMLElement {
     }
 
     processMessageQueue() {
+        // Ensure messageQueue is initialized
+        if (!this.messageQueue) {
+            this.messageQueue = [];
+            return;
+        }
+        
         if (this.messageQueue.length > 0) {
             this.otlc.debug('Processing queued messages', { count: this.messageQueue.length });
             
@@ -1526,6 +1803,14 @@ class ChitChatComponent extends HTMLElement {
 
     addMessage(messageData) {
         try {
+            // Ensure messageQueue and messages are initialized (defensive programming)
+            if (!this.messageQueue) {
+                this.messageQueue = [];
+            }
+            if (!this.messages) {
+                this.messages = [];
+            }
+            
             if (!this.isInitialized) {
                 this.otlc.warn('Message queued before initialization', { type: messageData.type });
                 // Queue the message until component is ready
@@ -1533,9 +1818,17 @@ class ChitChatComponent extends HTMLElement {
                 return null;
             }
             
+            // Ensure DOM is ready
+            const messagesContainer = this.querySelector('.messages-container');
+            if (!messagesContainer) {
+                this.otlc.warn('Messages container not found, queuing message', { type: messageData.type });
+                this.messageQueue.push(messageData);
+                return null;
+            }
+            
             // Create and validate message
             const message = this.createMessage(messageData);
-
+            
             this.messages.push(message);
             
             // Limit message history
@@ -1584,7 +1877,8 @@ class ChitChatComponent extends HTMLElement {
                 'text': 'chitchat-text-message',
                 'table': 'chitchat-table-message', 
                 'quick_reply': 'chitchat-quick-reply-message',
-                'image': 'chitchat-image-message'
+                'image': 'chitchat-image-message',
+                'chart': 'chitchat-chart-message'
             };
             
             const componentName = componentMap[message.type];
@@ -1646,20 +1940,17 @@ class ChitChatComponent extends HTMLElement {
     /**
      * Register a custom message type
      * @param {string} type - Message type name
-     * @param {Function|BaseMessage} handler - Message handler function or BaseMessage instance
+     * @param {Function|Object} handler - Message handler function or object with render method
      */
     registerCustomMessageType(type, handler) {
         if (typeof handler === 'function') {
-            // Function-based handler (legacy support)
+            // Function-based handler
             this.registerMessageType(type, handler);
-        } else if (handler instanceof window.BaseMessage) {
-            // BaseMessage instance
-            this.registerMessageType(type, (message) => handler.render(message));
         } else if (typeof handler === 'object' && handler.render) {
             // Object with render method
             this.registerMessageType(type, (message) => handler.render(message));
         } else {
-            throw new Error('Message handler must be a function, BaseMessage instance, or object with render method');
+            throw new Error('Message handler must be a function or object with render method');
         }
     }
 
@@ -1693,21 +1984,6 @@ class ChitChatComponent extends HTMLElement {
             timestamp: new Date(),
             ...messageData
         };
-
-        // Validate message if validator is available
-        if (typeof window.ChitChatMessages !== 'undefined' && this.supportsMessageType(message.type)) {
-            const registry = window.ChitChatMessages.registry;
-            const messageImpl = registry.getMessageImplementation(message.type, this);
-            const validation = window.ChitChatMessages.MessageValidator.validate(message, messageImpl);
-            
-            if (!validation.valid) {
-                console.warn(`Message validation failed:`, validation.errors);
-                // Convert to error message
-                message.type = 'system';
-                message.content = `Invalid message: ${validation.errors.join(', ')}`;
-                message.variant = 'error';
-            }
-        }
 
         return message;
     }
@@ -1974,6 +2250,17 @@ class ChitChatComponent extends HTMLElement {
         });
     }
 
+    addChart(title, chartType, chartData, chartOptions = {}) {
+        return this.addMessage({
+            type: 'chart',
+            title: title,
+            chartType: chartType,
+            chartData: chartData,
+            chartOptions: chartOptions,
+            sender: 'support'
+        });
+    }
+
     // === VISIBILITY CONTROL METHODS ===
     
     show() {
@@ -2044,6 +2331,3 @@ class ChitChatComponent extends HTMLElement {
 
 // Register the custom element
 customElements.define('chitchat-component', ChitChatComponent);
-
-// Export for global use
-window.ChitChat = ChitChatComponent;
