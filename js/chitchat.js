@@ -8,11 +8,15 @@ class ChitChatComponent extends HTMLElement {
     constructor() {
         super();
         
+        // Lightweight OTLC integration with safe fallbacks
+        this.otlc = this.initObservability();
+        
         // Initialize properties
         this.messages = [];
         this.messageHandlers = new Map();
         this.isTyping = false;
         this.eventListeners = {};
+        this.isInitialized = false;
         
         // Detect screen type and set responsive defaults
         this.screenType = this.detectScreenType();
@@ -31,6 +35,35 @@ class ChitChatComponent extends HTMLElement {
             animationDuration: 300,
             currentUser: { id: 'user', name: 'You', avatar: null },
             ...this.responsiveDefaults
+        };
+        
+        // Simple metrics tracking
+        this.otlc.counter('chitchat.created');
+    }
+
+    // Lightweight observability initialization
+    initObservability() {
+        // Try to use existing OTLC if available, otherwise create lightweight fallback
+        const otlc = (typeof window !== 'undefined' && window.otlc) || null;
+        
+        if (otlc) {
+            return otlc;
+        }
+        
+        // Lightweight no-op fallback that won't break anything
+        return {
+            startSpan: (name, attrs = {}) => ({ 
+                setStatus: () => {}, 
+                addEvent: () => {}, 
+                end: () => {} 
+            }),
+            counter: (name, value = 1) => {},
+            gauge: (name, value) => {},
+            histogram: (name, value) => {},
+            debug: (msg, attrs = {}) => console.debug(`[ChitChat] ${msg}`, attrs),
+            info: (msg, attrs = {}) => console.info(`[ChitChat] ${msg}`, attrs),
+            warn: (msg, attrs = {}) => console.warn(`[ChitChat] ${msg}`, attrs),
+            error: (msg, attrs = {}) => console.error(`[ChitChat] ${msg}`, attrs)
         };
     }
 
@@ -101,12 +134,26 @@ class ChitChatComponent extends HTMLElement {
     }
 
     connectedCallback() {
-        this.parseAttributes();
-        this.init();
+        try {
+            this.parseAttributes();
+            this.init();
+            this.isInitialized = true;
+            
+            this.otlc.info('ChitChat connected');
+            
+        } catch (error) {
+            this.otlc.error('ChitChat connection failed', { error: error.message });
+            throw error;
+        }
     }
 
     disconnectedCallback() {
-        this.cleanup();
+        try {
+            this.cleanup();
+            this.otlc.info('ChitChat disconnected');
+        } catch (error) {
+            this.otlc.error('ChitChat disconnection error', { error: error.message });
+        }
     }
 
     attributeChangedCallback(name, oldValue, newValue) {
@@ -801,173 +848,193 @@ class ChitChatComponent extends HTMLElement {
     }
 
     setupCustomResize() {
-        // Check if resizing is enabled for this screen type
-        if (!this.options.enableResize || this.screenType === 'mobile') return;
-
-        const container = this.querySelector('.chitchat-container');
-        if (!container) return;
-
-        let isResizing = false;
-        let startX, startY, startWidth, startHeight, startLeft, startTop;
-
-        // Get responsive constraints for better sizing
-        const minWidth = 450;
-        const minHeight = 550;
-
-        // Create resize handle in top-left corner
-        const resizeHandle = document.createElement('div');
-        resizeHandle.className = 'chitchat-resize-handle';
-        resizeHandle.innerHTML = '<i class="bi bi-grip-diagonal"></i>';
-        const handleSize = this.screenType === 'desktop' ? '24px' : '20px';
-        const fontSize = this.screenType === 'desktop' ? '12px' : '10px';
-        
-        resizeHandle.style.cssText = `
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: ${handleSize};
-            height: ${handleSize};
-            background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
-            cursor: nw-resize;
-            z-index: 1001;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: ${fontSize};
-            border-radius: 16px 0 0 0;
-            opacity: 0.8;
-            transition: all 0.2s ease;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-        `;
-
-        container.appendChild(resizeHandle);
-
-        // Mouse events for resize
-        resizeHandle.addEventListener('mousedown', (e) => {
-            isResizing = true;
-            startX = e.clientX;
-            startY = e.clientY;
-            
-            const computedStyle = document.defaultView.getComputedStyle(this);
-            startWidth = parseInt(computedStyle.width, 10);
-            startHeight = parseInt(computedStyle.height, 10);
-            startLeft = parseInt(computedStyle.left || this.offsetLeft, 10);
-            startTop = parseInt(computedStyle.top || this.offsetTop, 10);
-            
-            document.addEventListener('mousemove', handleResize);
-            document.addEventListener('mouseup', stopResize);
-            e.preventDefault();
-        });
-
-        // Touch events for mobile/tablet resize
-        resizeHandle.addEventListener('touchstart', (e) => {
-            isResizing = true;
-            const touch = e.touches[0];
-            startX = touch.clientX;
-            startY = touch.clientY;
-            
-            const computedStyle = document.defaultView.getComputedStyle(this);
-            startWidth = parseInt(computedStyle.width, 10);
-            startHeight = parseInt(computedStyle.height, 10);
-            startLeft = parseInt(computedStyle.left || this.offsetLeft, 10);
-            startTop = parseInt(computedStyle.top || this.offsetTop, 10);
-            
-            document.addEventListener('touchmove', handleTouchResize);
-            document.addEventListener('touchend', stopResize);
-            e.preventDefault();
-        });
-
-        // Enhanced hover effects for better UX
-        resizeHandle.addEventListener('mouseenter', () => {
-            resizeHandle.style.opacity = '1';
-            resizeHandle.style.transform = 'scale(1.1)';
-            resizeHandle.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
-        });
-
-        resizeHandle.addEventListener('mouseleave', () => {
-            if (!isResizing) {
-                resizeHandle.style.opacity = '0.8';
-                resizeHandle.style.transform = 'scale(1)';
-                resizeHandle.style.boxShadow = '0 2px 8px rgba(0,0,0,0.2)';
+        try {
+            // Check if resizing is enabled for this screen type
+            if (!this.options.enableResize || this.screenType === 'mobile') {
+                this.otlc.debug('Resize disabled', { reason: this.screenType === 'mobile' ? 'mobile' : 'disabled' });
+                return;
             }
-        });
 
-        const handleResize = (e) => {
-            if (!isResizing) return;
-            
-            const deltaX = e.clientX - startX;
-            const deltaY = e.clientY - startY;
-            
-            // Calculate new dimensions (growing in opposite direction for top-left)
-            const newWidth = Math.max(minWidth, startWidth - deltaX);
-            const newHeight = Math.max(minHeight, startHeight - deltaY);
-            
-            // Calculate new position to maintain bottom-right corner position
-            const newLeft = startLeft + (startWidth - newWidth);
-            const newTop = startTop + (startHeight - newHeight);
-            
-            // Update component dimensions and position
-            this.style.width = newWidth + 'px';
-            this.style.height = newHeight + 'px';
-            this.style.left = newLeft + 'px';
-            this.style.top = newTop + 'px';
-        };
+            const container = this.querySelector('.chitchat-container');
+            if (!container) {
+                throw new Error('Container not found for resize setup');
+            }
 
-        const handleTouchResize = (e) => {
-            if (!isResizing) return;
-            const touch = e.touches[0];
-            
-            const deltaX = touch.clientX - startX;
-            const deltaY = touch.clientY - startY;
-            
-            // Calculate new dimensions (growing in opposite direction for top-left)
-            const newWidth = Math.max(minWidth, startWidth - deltaX);
-            const newHeight = Math.max(minHeight, startHeight - deltaY);
-            
-            // Calculate new position to maintain bottom-right corner position
-            const newLeft = startLeft + (startWidth - newWidth);
-            const newTop = startTop + (startHeight - newHeight);
-            
-            // Update component dimensions and position
-            this.style.width = newWidth + 'px';
-            this.style.height = newHeight + 'px';
-            this.style.left = newLeft + 'px';
-            this.style.top = newTop + 'px';
-        };
+            let isResizing = false;
+            let startX, startY, startWidth, startHeight, startLeft, startTop;
 
-        const stopResize = () => {
-            isResizing = false;
-            resizeHandle.style.opacity = '0.8';
-            document.removeEventListener('mousemove', handleResize);
-            document.removeEventListener('mouseup', stopResize);
-            document.removeEventListener('touchmove', handleTouchResize);
-            document.removeEventListener('touchend', stopResize);
-            
-            // Dispatch resize event
-            this.dispatchEvent(new CustomEvent('chitchat:resized', {
-                detail: {
-                    width: this.offsetWidth,
-                    height: this.offsetHeight,
-                    left: this.offsetLeft,
-                    top: this.offsetTop
-                },
-                bubbles: true
-            }));
-        };
+            // Get responsive constraints for better sizing
+            const minWidth = 450;
+            const minHeight = 550;
 
-        // Handle window resize to keep chat in bounds
-        window.addEventListener('resize', () => {
-            // Keep chat within window bounds
-            const rect = this.getBoundingClientRect();
-            const maxX = window.innerWidth - this.offsetWidth;
-            const maxY = window.innerHeight - this.offsetHeight;
+            // Create resize handle in top-left corner
+            const resizeHandle = document.createElement('div');
+            resizeHandle.className = 'chitchat-resize-handle';
+            resizeHandle.innerHTML = '<i class="bi bi-grip-diagonal"></i>';
+            const handleSize = this.screenType === 'desktop' ? '24px' : '20px';
+            const fontSize = this.screenType === 'desktop' ? '12px' : '10px';
             
-            if (rect.left < 0) this.style.left = '0px';
-            if (rect.top < 0) this.style.top = '0px';
-            if (rect.left > maxX) this.style.left = maxX + 'px';
-            if (rect.top > maxY) this.style.top = maxY + 'px';
-        });
+            resizeHandle.style.cssText = `
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: ${handleSize};
+                height: ${handleSize};
+                background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+                cursor: nw-resize;
+                z-index: 1001;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: white;
+                font-size: ${fontSize};
+                border-radius: 16px 0 0 0;
+                opacity: 0.8;
+                transition: all 0.2s ease;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            `;
+
+            container.appendChild(resizeHandle);
+
+            // Mouse events for resize
+            resizeHandle.addEventListener('mousedown', (e) => {
+                isResizing = true;
+                startX = e.clientX;
+                startY = e.clientY;
+                
+                const computedStyle = document.defaultView.getComputedStyle(this);
+                startWidth = parseInt(computedStyle.width, 10);
+                startHeight = parseInt(computedStyle.height, 10);
+                startLeft = parseInt(computedStyle.left || this.offsetLeft, 10);
+                startTop = parseInt(computedStyle.top || this.offsetTop, 10);
+                
+                document.addEventListener('mousemove', handleResize);
+                document.addEventListener('mouseup', stopResize);
+                e.preventDefault();
+                
+                this.otlc.counter('chitchat.resize.started');
+            });
+
+            // Touch events for mobile/tablet resize
+            resizeHandle.addEventListener('touchstart', (e) => {
+                isResizing = true;
+                const touch = e.touches[0];
+                startX = touch.clientX;
+                startY = touch.clientY;
+                
+                const computedStyle = document.defaultView.getComputedStyle(this);
+                startWidth = parseInt(computedStyle.width, 10);
+                startHeight = parseInt(computedStyle.height, 10);
+                startLeft = parseInt(computedStyle.left || this.offsetLeft, 10);
+                startTop = parseInt(computedStyle.top || this.offsetTop, 10);
+                
+                document.addEventListener('touchmove', handleTouchResize);
+                document.addEventListener('touchend', stopResize);
+                e.preventDefault();
+            });
+
+            // Enhanced hover effects for better UX
+            resizeHandle.addEventListener('mouseenter', () => {
+                resizeHandle.style.opacity = '1';
+                resizeHandle.style.transform = 'scale(1.1)';
+                resizeHandle.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
+            });
+
+            resizeHandle.addEventListener('mouseleave', () => {
+                if (!isResizing) {
+                    resizeHandle.style.opacity = '0.8';
+                    resizeHandle.style.transform = 'scale(1)';
+                    resizeHandle.style.boxShadow = '0 2px 8px rgba(0,0,0,0.2)';
+                }
+            });
+
+            const handleResize = (e) => {
+                if (!isResizing) return;
+                
+                const deltaX = e.clientX - startX;
+                const deltaY = e.clientY - startY;
+                
+                // Calculate new dimensions (growing in opposite direction for top-left)
+                const newWidth = Math.max(minWidth, startWidth - deltaX);
+                const newHeight = Math.max(minHeight, startHeight - deltaY);
+                
+                // Calculate new position to maintain bottom-right corner position
+                const newLeft = startLeft + (startWidth - newWidth);
+                const newTop = startTop + (startHeight - newHeight);
+                
+                // Update component dimensions and position
+                this.style.width = newWidth + 'px';
+                this.style.height = newHeight + 'px';
+                this.style.left = newLeft + 'px';
+                this.style.top = newTop + 'px';
+            };
+
+            const handleTouchResize = (e) => {
+                if (!isResizing) return;
+                const touch = e.touches[0];
+                
+                const deltaX = touch.clientX - startX;
+                const deltaY = touch.clientY - startY;
+                
+                // Calculate new dimensions (growing in opposite direction for top-left)
+                const newWidth = Math.max(minWidth, startWidth - deltaX);
+                const newHeight = Math.max(minHeight, startHeight - deltaY);
+                
+                // Calculate new position to maintain bottom-right corner position
+                const newLeft = startLeft + (startWidth - newWidth);
+                const newTop = startTop + (startHeight - newHeight);
+                
+                // Update component dimensions and position
+                this.style.width = newWidth + 'px';
+                this.style.height = newHeight + 'px';
+                this.style.left = newLeft + 'px';
+                this.style.top = newTop + 'px';
+            };
+
+            const stopResize = () => {
+                if (isResizing) {
+                    isResizing = false;
+                    resizeHandle.style.opacity = '0.8';
+                    document.removeEventListener('mousemove', handleResize);
+                    document.removeEventListener('mouseup', stopResize);
+                    document.removeEventListener('touchmove', handleTouchResize);
+                    document.removeEventListener('touchend', stopResize);
+                    
+                    this.otlc.counter('chitchat.resize.completed');
+                    this.otlc.info('Chat resized', { width: this.offsetWidth, height: this.offsetHeight });
+                    
+                    // Dispatch resize event
+                    this.dispatchEvent(new CustomEvent('chitchat:resized', {
+                        detail: {
+                            width: this.offsetWidth,
+                            height: this.offsetHeight,
+                            left: this.offsetLeft,
+                            top: this.offsetTop
+                        },
+                        bubbles: true
+                    }));
+                }
+            };
+
+            // Handle window resize to keep chat in bounds
+            window.addEventListener('resize', () => {
+                // Keep chat within window bounds
+                const rect = this.getBoundingClientRect();
+                const maxX = window.innerWidth - this.offsetWidth;
+                const maxY = window.innerHeight - this.offsetHeight;
+                
+                if (rect.left < 0) this.style.left = '0px';
+                if (rect.top < 0) this.style.top = '0px';
+                if (rect.left > maxX) this.style.left = maxX + 'px';
+                if (rect.top > maxY) this.style.top = maxY + 'px';
+            });
+            
+            this.otlc.debug('Resize setup complete');
+            
+        } catch (error) {
+            this.otlc.error('Failed to setup resize', { error: error.message });
+            throw error;
+        }
     }
 
     registerDefaultMessageTypes() {
@@ -1007,75 +1074,96 @@ class ChitChatComponent extends HTMLElement {
     }
 
     addMessage(messageData) {
-        // Create and validate message
-        const message = this.createMessage(messageData);
+        try {
+            if (!this.isInitialized) {
+                this.otlc.warn('Message added before initialization', { type: messageData.type });
+            }
+            
+            // Create and validate message
+            const message = this.createMessage(messageData);
 
-        this.messages.push(message);
-        
-        // Limit message history
-        if (this.messages.length > this.options.maxMessages) {
-            this.messages = this.messages.slice(-this.options.maxMessages);
+            this.messages.push(message);
+            
+            // Limit message history
+            if (this.messages.length > this.options.maxMessages) {
+                this.messages = this.messages.slice(-this.options.maxMessages);
+            }
+
+            this.renderMessage(message);
+            
+            if (this.options.autoScroll) {
+                this.scrollToBottom();
+            }
+
+            // Emit message added event
+            this.emit('message-added', { message });
+            
+            this.otlc.counter('chitchat.message.added');
+            this.otlc.debug('Message added', { type: message.type, id: message.id });
+
+            return message;
+            
+        } catch (error) {
+            this.otlc.error('Failed to add message', { error: error.message, type: messageData.type });
+            throw error;
         }
-
-        this.renderMessage(message);
-        
-        if (this.options.autoScroll) {
-            this.scrollToBottom();
-        }
-
-        // Emit message added event
-        this.emit('message-added', { message });
-
-        return message;
     }
 
     renderMessage(message) {
-        const messagesContainer = this.querySelector('.messages-container');
-        const messageElement = document.createElement('div');
-        
-        const senderClass = message.sender === this.options.currentUser.id ? 'sent' : 
-                           message.type === 'system' ? 'system' : 'received';
-        
-        messageElement.className = `message ${senderClass}`;
-        messageElement.dataset.messageId = message.id;
-        messageElement.dataset.messageType = message.type;
+        try {
+            const messagesContainer = this.querySelector('.messages-container');
+            const messageElement = document.createElement('div');
+            
+            const senderClass = message.sender === this.options.currentUser.id ? 'sent' : 
+                               message.type === 'system' ? 'system' : 'received';
+            
+            messageElement.className = `message ${senderClass}`;
+            messageElement.dataset.messageId = message.id;
+            messageElement.dataset.messageType = message.type;
 
-        // Get the message handler and render content
-        const handler = this.messageHandlers.get(message.type);
-        let content;
-        
-        if (handler) {
-            try {
-                content = handler(message);
-            } catch (error) {
-                console.error(`Error rendering message type ${message.type}:`, error);
-                content = this.escapeHtml(`[Error rendering ${message.type} message]`);
+            // Get the message handler and render content
+            const handler = this.messageHandlers.get(message.type);
+            let content;
+            
+            if (handler) {
+                try {
+                    content = handler(message);
+                } catch (error) {
+                    this.otlc.error(`Error rendering message type ${message.type}`, { error: error.message });
+                    content = this.escapeHtml(`[Error rendering ${message.type} message]`);
+                }
+            } else {
+                this.otlc.warn(`No handler found for message type: ${message.type}`);
+                content = this.escapeHtml(message.content || `[Unsupported message type: ${message.type}]`);
             }
-        } else {
-            console.warn(`No handler found for message type: ${message.type}`);
-            content = this.escapeHtml(message.content || `[Unsupported message type: ${message.type}]`);
-        }
-        
-        messageElement.innerHTML = `
-            <div class="message-bubble">
-                ${content}
-            </div>
-            ${this.options.showTimestamps ? `
-                <div class="message-timestamp">
-                    ${this.formatTimestamp(message.timestamp)}
+            
+            messageElement.innerHTML = `
+                <div class="message-bubble">
+                    ${content}
                 </div>
-            ` : ''}
-        `;
+                ${this.options.showTimestamps ? `
+                    <div class="message-timestamp">
+                        ${this.formatTimestamp(message.timestamp)}
+                    </div>
+                ` : ''}
+            `;
 
-        messagesContainer.appendChild(messageElement);
+            messagesContainer.appendChild(messageElement);
 
-        // Trigger animation
-        requestAnimationFrame(() => {
-            messageElement.style.animationDelay = '0s';
-        });
+            // Trigger animation
+            requestAnimationFrame(() => {
+                messageElement.style.animationDelay = '0s';
+            });
 
-        // Emit message rendered event
-        this.emit('message-rendered', { message, element: messageElement });
+            // Emit message rendered event
+            this.emit('message-rendered', { message, element: messageElement });
+            
+            this.otlc.counter('chitchat.message.rendered');
+            
+        } catch (error) {
+            this.otlc.error('Failed to render message', { error: error.message, id: message.id });
+            throw error;
+        }
     }
 
     // === MESSAGE TYPE EXTENSIBILITY API ===
@@ -1186,34 +1274,43 @@ class ChitChatComponent extends HTMLElement {
     }
 
     sendMessage(content = null) {
-        const input = this.querySelector('#chitchat-input');
-        const messageContent = content || input?.value.trim();
-        
-        if (!messageContent) return;
+        try {
+            const input = this.querySelector('#chitchat-input');
+            const messageContent = content || input?.value.trim();
+            
+            if (!messageContent) return;
 
-        // Add user message
-        this.addMessage({
-            type: 'text',
-            content: messageContent,
-            sender: this.options.currentUser.id
-        });
+            // Add user message
+            this.addMessage({
+                type: 'text',
+                content: messageContent,
+                sender: this.options.currentUser.id
+            });
 
-        // Clear input
-        if (input) input.value = '';
-        
-        // Dispatch message sent event
-        this.dispatchEvent(new CustomEvent('chitchat:message-sent', {
-            detail: { content: messageContent, user: this.options.currentUser },
-            bubbles: true
-        }));
-        
-        // Simulate typing and response (for demo)
-        if (this.options.showTypingIndicator) {
-            this.showTypingIndicator();
-            setTimeout(() => {
-                this.hideTypingIndicator();
-                this.simulateResponse(messageContent);
-            }, 1000 + Math.random() * 2000);
+            // Clear input
+            if (input) input.value = '';
+            
+            // Dispatch message sent event
+            this.dispatchEvent(new CustomEvent('chitchat:message-sent', {
+                detail: { content: messageContent, user: this.options.currentUser },
+                bubbles: true
+            }));
+            
+            this.otlc.counter('chitchat.message.sent');
+            this.otlc.debug('Message sent', { length: messageContent.length });
+            
+            // Simulate typing and response (for demo)
+            if (this.options.showTypingIndicator) {
+                this.showTypingIndicator();
+                setTimeout(() => {
+                    this.hideTypingIndicator();
+                    this.simulateResponse(messageContent);
+                }, 1000 + Math.random() * 2000);
+            }
+            
+        } catch (error) {
+            this.otlc.error('Failed to send message', { error: error.message });
+            throw error;
         }
     }
 
@@ -1371,16 +1468,23 @@ class ChitChatComponent extends HTMLElement {
 
     // Web Component lifecycle methods
     cleanup() {
-        // Clean up event listeners and references
-        this.messages = [];
-        this.messageHandlers.clear();
-        this.eventListeners = {};
-        
-        // Remove styles if this was the last component
-        const remainingComponents = document.querySelectorAll('chitchat-component');
-        if (remainingComponents.length <= 1) {
-            const styles = document.getElementById('chitchat-styles');
-            if (styles) styles.remove();
+        try {
+            // Clean up event listeners and references
+            this.messages = [];
+            this.messageHandlers.clear();
+            this.eventListeners = {};
+            
+            // Remove styles if this was the last component
+            const remainingComponents = document.querySelectorAll('chitchat-component');
+            if (remainingComponents.length <= 1) {
+                const styles = document.getElementById('chitchat-styles');
+                if (styles) styles.remove();
+            }
+            
+            this.otlc.debug('ChitChat cleaned up');
+            
+        } catch (error) {
+            this.otlc.error('Error during cleanup', { error: error.message });
         }
     }
 
