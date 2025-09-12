@@ -245,108 +245,6 @@
             margin: 0;
             max-width: 100%;
         }
-
-        /* Message Component Styles */
-        .message-table {
-            background: rgba(255,255,255,0.95);
-            border-radius: 8px;
-            overflow: hidden;
-        }
-
-        .message-table th {
-            background: rgba(var(--bs-primary-rgb), 0.1);
-            color: var(--bs-primary);
-            font-weight: 600;
-            border: none;
-        }
-
-        .message-table td {
-            border-color: rgba(var(--bs-gray-400-rgb), 0.3);
-        }
-
-        .code-container {
-            border-radius: 8px;
-            overflow: hidden;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-
-        .code-header {
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-        }
-
-        .code-content {
-            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-            font-size: 13px;
-            line-height: 1.4;
-            max-height: 300px;
-            overflow-y: auto;
-        }
-
-        .copy-btn {
-            font-size: 11px;
-            padding: 2px 8px;
-        }
-
-        .chart-container canvas {
-            border-radius: 8px;
-            background: rgba(255,255,255,0.95);
-        }
-
-        .chart-legend {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-        }
-
-        .legend-color {
-            width: 12px;
-            height: 12px;
-            border-radius: 2px;
-            margin-right: 6px;
-        }
-
-        .legend-label {
-            font-size: 12px;
-            margin-right: 8px;
-        }
-
-        .legend-value {
-            font-size: 12px;
-            font-weight: 600;
-            color: var(--bs-primary);
-        }
-
-        .sql-query {
-            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-            font-size: 13px;
-            line-height: 1.4;
-        }
-
-        .quick-reply-btn {
-            transition: all 0.2s ease;
-        }
-
-        .quick-reply-btn:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 2px 8px rgba(var(--bs-primary-rgb), 0.3);
-        }
-
-        /* Message component animations */
-        text-message, table-message, code-message, chart-message, sql-message, quick-reply-message, system-message {
-            display: block;
-            animation: messageSlideIn 0.3s ease-out;
-        }
-
-        @keyframes messageSlideIn {
-            from {
-                opacity: 0;
-                transform: translateY(10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
     </style>
     
     {% block extra_css %}{% endblock %}
@@ -565,7 +463,6 @@
     
     <!-- Banking Application JavaScript -->
     <script src="/js/utils.js"></script>
-    <script src="/js/messages.js"></script>
     <script src="/js/chitchat.js"></script>
     <script src="/js/banking-app.js"></script>
     

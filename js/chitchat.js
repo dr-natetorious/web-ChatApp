@@ -36,27 +36,12 @@ class ChitChatComponent extends HTMLElement {
 
     detectScreenType() {
         const width = window.innerWidth;
-        const height = window.innerHeight;
-        const pixelRatio = window.devicePixelRatio || 1;
-        const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-
-        // Mobile devices
-        if (width <= 768 || isTouch && width <= 1024) {
+        
+        if (width <= 768) {
             return 'mobile';
+        } else {
+            return 'desktop';
         }
-        
-        // 14-16 inch laptops (common resolutions: 1366x768, 1440x900, 1536x864, 1600x900, 1680x1050)
-        if (width <= 1680 && height <= 1050) {
-            return 'laptop';
-        }
-        
-        // Large desktop/multi-monitor (4K, ultrawide, etc.)
-        if (width >= 2560 || height >= 1440) {
-            return 'desktop-large';
-        }
-        
-        // Standard desktop (1920x1080, etc.)
-        return 'desktop';
     }
 
     getResponsiveDefaults() {
@@ -68,6 +53,7 @@ class ChitChatComponent extends HTMLElement {
 
         switch (screenType) {
             case 'mobile':
+                // Mobile devices - fullscreen experience
                 return {
                     width: '100vw',
                     height: '100vh',
@@ -83,42 +69,17 @@ class ChitChatComponent extends HTMLElement {
                     compactMode: true
                 };
                 
-            case 'laptop':
-                return {
-                    width: Math.min(480, viewport.width * 0.75),
-                    height: Math.min(680, viewport.height * 0.8),
-                    maxWidth: 550,
-                    maxHeight: viewport.height * 0.85,
-                    enableResize: true,
-                    compactMode: false
-                };
-                
             case 'desktop':
-                return {
-                    width: 450,
-                    height: 650,
-                    maxWidth: 600,
-                    maxHeight: viewport.height * 0.85,
-                    enableResize: true,
-                    compactMode: false
-                };
-                
-            case 'desktop-large':
-                return {
-                    width: 500,
-                    height: 700,
-                    maxWidth: 800,
-                    maxHeight: viewport.height * 0.8,
-                    enableResize: true,
-                    compactMode: false
-                };
-                
             default:
+                // Desktop/Laptop - proper sizing based on viewport
+                // For your 2560x1600: ~975px wide, ~1200px tall
+                // For 1920x1080: ~730px wide, ~810px tall
+                const width = Math.round(viewport.width * 0.38); // 38% of screen width
+                const height = Math.round(viewport.height * 0.75); // 75% of screen height
+                
                 return {
-                    width: 400,
-                    height: 600,
-                    maxWidth: 500,
-                    maxHeight: 700,
+                    width: width,
+                    height: height,
                     enableResize: true,
                     compactMode: false
                 };
@@ -329,18 +290,9 @@ class ChitChatComponent extends HTMLElement {
             this.style.height = defaults.height;
         }
         
-        // Set max dimensions
-        if (typeof defaults.maxWidth === 'number') {
-            this.style.maxWidth = defaults.maxWidth + 'px';
-        } else if (defaults.maxWidth) {
-            this.style.maxWidth = defaults.maxWidth;
-        }
-        
-        if (typeof defaults.maxHeight === 'number') {
-            this.style.maxHeight = defaults.maxHeight + 'px';
-        } else if (defaults.maxHeight) {
-            this.style.maxHeight = defaults.maxHeight;
-        }
+        // Clear any max dimensions - users can resize as they want
+        this.style.maxWidth = '';
+        this.style.maxHeight = '';
         
         // Apply border radius
         if (defaults.borderRadius) {
@@ -667,11 +619,11 @@ class ChitChatComponent extends HTMLElement {
                 border-color: #555;
             }
 
-            /* Resize Handle */
+            /* Resize Handle - Top-left corner positioning */
             .chitchat-resize-handle {
                 position: absolute;
-                bottom: 0;
-                right: 0;
+                top: 0;
+                left: 0;
                 width: 20px;
                 height: 20px;
                 background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
@@ -682,13 +634,26 @@ class ChitChatComponent extends HTMLElement {
                 justify-content: center;
                 color: white;
                 font-size: 10px;
-                border-radius: 0 0 16px 0;
-                opacity: 0.7;
-                transition: opacity 0.2s;
+                border-radius: 16px 0 0 0;
+                opacity: 0.8;
+                transition: all 0.2s ease;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.2);
             }
 
             .chitchat-resize-handle:hover {
                 opacity: 1;
+                transform: scale(1.1);
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            }
+
+            /* Larger resize handle for laptops */
+            @media (min-width: 769px) {
+                .chitchat-resize-handle {
+                    width: 24px;
+                    height: 24px;
+                    font-size: 12px;
+                    opacity: 0.85;
+                }
             }
 
             /* Mobile devices (phones) */
@@ -724,71 +689,28 @@ class ChitChatComponent extends HTMLElement {
                 }
             }
 
-            /* 14-16 inch laptops (1366x768 to 1680x1050) */
-            @media (min-width: 768px) and (max-width: 1680px) {
+            /* Desktop/Laptop screens (769px and above) */
+            @media (min-width: 769px) {
                 .chitchat-container {
-                    min-width: 400px;
-                    min-height: 500px;
-                    max-width: 550px;
-                    max-height: 85vh;
+                    min-width: 450px;
+                    min-height: 550px;
+                    /* No max constraints - let users resize as they want */
                 }
 
                 .message-bubble {
                     max-width: 70%;
-                }
-
-                .chitchat-header {
-                    padding: 16px 20px;
-                }
-
-                .chitchat-messages {
-                    padding: 16px;
-                }
-
-                .chitchat-input {
-                    padding: 12px 20px;
-                }
-
-                /* Optimize for common laptop screen heights */
-                @media (max-height: 900px) {
-                    .chitchat-container {
-                        max-height: 80vh;
-                    }
-                }
-            }
-
-            /* Large desktops and multi-monitor setups */
-            @media (min-width: 1920px) {
-                .chitchat-container {
-                    min-width: 450px;
-                    min-height: 550px;
                 }
 
                 .chitchat-header {
                     padding: 18px 24px;
                 }
 
-                .message-bubble {
-                    max-width: 70%;
-                    padding: 14px 18px;
-                }
-            }
-
-            /* Ultra-wide and high-DPI displays */
-            @media (min-width: 2560px) {
-                .chitchat-container {
-                    min-width: 500px;
-                    min-height: 600px;
+                .chitchat-messages {
+                    padding: 20px;
                 }
 
-                .chitchat-header {
-                    padding: 20px 28px;
-                }
-
-                .message-bubble {
-                    max-width: 65%;
-                    padding: 16px 20px;
-                    font-size: 1rem;
+                .chitchat-input {
+                    padding: 16px 24px;
                 }
             }
 
@@ -886,24 +808,25 @@ class ChitChatComponent extends HTMLElement {
         if (!container) return;
 
         let isResizing = false;
-        let startX, startY, startWidth, startHeight;
+        let startX, startY, startWidth, startHeight, startLeft, startTop;
 
-        // Get responsive constraints
-        const minWidth = this.screenType === 'laptop' ? 350 : 400;
-        const minHeight = this.screenType === 'laptop' ? 450 : 500;
-        const maxWidth = this.options.maxWidth || window.innerWidth * 0.9;
-        const maxHeight = this.options.maxHeight || window.innerHeight * 0.9;
+        // Get responsive constraints for better sizing
+        const minWidth = 450;
+        const minHeight = 550;
 
-        // Create a better resize handle
+        // Create resize handle in top-left corner
         const resizeHandle = document.createElement('div');
         resizeHandle.className = 'chitchat-resize-handle';
-        resizeHandle.innerHTML = '<i class="bi bi-grip-horizontal"></i>';
+        resizeHandle.innerHTML = '<i class="bi bi-grip-diagonal"></i>';
+        const handleSize = this.screenType === 'desktop' ? '24px' : '20px';
+        const fontSize = this.screenType === 'desktop' ? '12px' : '10px';
+        
         resizeHandle.style.cssText = `
             position: absolute;
-            bottom: 0;
-            right: 0;
-            width: 20px;
-            height: 20px;
+            top: 0;
+            left: 0;
+            width: ${handleSize};
+            height: ${handleSize};
             background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
             cursor: nw-resize;
             z-index: 1001;
@@ -911,10 +834,11 @@ class ChitChatComponent extends HTMLElement {
             align-items: center;
             justify-content: center;
             color: white;
-            font-size: 10px;
-            border-radius: 0 0 16px 0;
-            opacity: 0.7;
-            transition: opacity 0.2s;
+            font-size: ${fontSize};
+            border-radius: 16px 0 0 0;
+            opacity: 0.8;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
         `;
 
         container.appendChild(resizeHandle);
@@ -924,8 +848,12 @@ class ChitChatComponent extends HTMLElement {
             isResizing = true;
             startX = e.clientX;
             startY = e.clientY;
-            startWidth = parseInt(document.defaultView.getComputedStyle(container).width, 10);
-            startHeight = parseInt(document.defaultView.getComputedStyle(container).height, 10);
+            
+            const computedStyle = document.defaultView.getComputedStyle(this);
+            startWidth = parseInt(computedStyle.width, 10);
+            startHeight = parseInt(computedStyle.height, 10);
+            startLeft = parseInt(computedStyle.left || this.offsetLeft, 10);
+            startTop = parseInt(computedStyle.top || this.offsetTop, 10);
             
             document.addEventListener('mousemove', handleResize);
             document.addEventListener('mouseup', stopResize);
@@ -938,49 +866,79 @@ class ChitChatComponent extends HTMLElement {
             const touch = e.touches[0];
             startX = touch.clientX;
             startY = touch.clientY;
-            startWidth = parseInt(document.defaultView.getComputedStyle(container).width, 10);
-            startHeight = parseInt(document.defaultView.getComputedStyle(container).height, 10);
+            
+            const computedStyle = document.defaultView.getComputedStyle(this);
+            startWidth = parseInt(computedStyle.width, 10);
+            startHeight = parseInt(computedStyle.height, 10);
+            startLeft = parseInt(computedStyle.left || this.offsetLeft, 10);
+            startTop = parseInt(computedStyle.top || this.offsetTop, 10);
             
             document.addEventListener('touchmove', handleTouchResize);
             document.addEventListener('touchend', stopResize);
             e.preventDefault();
         });
 
-        // Hover effects
+        // Enhanced hover effects for better UX
         resizeHandle.addEventListener('mouseenter', () => {
             resizeHandle.style.opacity = '1';
+            resizeHandle.style.transform = 'scale(1.1)';
+            resizeHandle.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
         });
 
         resizeHandle.addEventListener('mouseleave', () => {
-            if (!isResizing) resizeHandle.style.opacity = '0.7';
+            if (!isResizing) {
+                resizeHandle.style.opacity = '0.8';
+                resizeHandle.style.transform = 'scale(1)';
+                resizeHandle.style.boxShadow = '0 2px 8px rgba(0,0,0,0.2)';
+            }
         });
 
         const handleResize = (e) => {
             if (!isResizing) return;
             
-            const newWidth = Math.max(minWidth, Math.min(maxWidth, startWidth + e.clientX - startX));
-            const newHeight = Math.max(minHeight, Math.min(maxHeight, startHeight + e.clientY - startY));
+            const deltaX = e.clientX - startX;
+            const deltaY = e.clientY - startY;
             
-            // Update component dimensions
+            // Calculate new dimensions (growing in opposite direction for top-left)
+            const newWidth = Math.max(minWidth, startWidth - deltaX);
+            const newHeight = Math.max(minHeight, startHeight - deltaY);
+            
+            // Calculate new position to maintain bottom-right corner position
+            const newLeft = startLeft + (startWidth - newWidth);
+            const newTop = startTop + (startHeight - newHeight);
+            
+            // Update component dimensions and position
             this.style.width = newWidth + 'px';
             this.style.height = newHeight + 'px';
+            this.style.left = newLeft + 'px';
+            this.style.top = newTop + 'px';
         };
 
         const handleTouchResize = (e) => {
             if (!isResizing) return;
             const touch = e.touches[0];
             
-            const newWidth = Math.max(minWidth, Math.min(maxWidth, startWidth + touch.clientX - startX));
-            const newHeight = Math.max(minHeight, Math.min(maxHeight, startHeight + touch.clientY - startY));
+            const deltaX = touch.clientX - startX;
+            const deltaY = touch.clientY - startY;
             
-            // Update component dimensions
+            // Calculate new dimensions (growing in opposite direction for top-left)
+            const newWidth = Math.max(minWidth, startWidth - deltaX);
+            const newHeight = Math.max(minHeight, startHeight - deltaY);
+            
+            // Calculate new position to maintain bottom-right corner position
+            const newLeft = startLeft + (startWidth - newWidth);
+            const newTop = startTop + (startHeight - newHeight);
+            
+            // Update component dimensions and position
             this.style.width = newWidth + 'px';
             this.style.height = newHeight + 'px';
+            this.style.left = newLeft + 'px';
+            this.style.top = newTop + 'px';
         };
 
         const stopResize = () => {
             isResizing = false;
-            resizeHandle.style.opacity = '0.7';
+            resizeHandle.style.opacity = '0.8';
             document.removeEventListener('mousemove', handleResize);
             document.removeEventListener('mouseup', stopResize);
             document.removeEventListener('touchmove', handleTouchResize);
@@ -989,8 +947,10 @@ class ChitChatComponent extends HTMLElement {
             // Dispatch resize event
             this.dispatchEvent(new CustomEvent('chitchat:resized', {
                 detail: {
-                    width: container.offsetWidth,
-                    height: container.offsetHeight
+                    width: this.offsetWidth,
+                    height: this.offsetHeight,
+                    left: this.offsetLeft,
+                    top: this.offsetTop
                 },
                 bubbles: true
             }));
@@ -998,20 +958,15 @@ class ChitChatComponent extends HTMLElement {
 
         // Handle window resize to keep chat in bounds
         window.addEventListener('resize', () => {
-            // Recalculate responsive constraints on window resize
-            const updatedDefaults = this.getResponsiveDefaults();
-            const newMaxWidth = typeof updatedDefaults.maxWidth === 'number' ? 
-                updatedDefaults.maxWidth : window.innerWidth * 0.9;
-            const newMaxHeight = typeof updatedDefaults.maxHeight === 'number' ? 
-                updatedDefaults.maxHeight : window.innerHeight * 0.9;
+            // Keep chat within window bounds
+            const rect = this.getBoundingClientRect();
+            const maxX = window.innerWidth - this.offsetWidth;
+            const maxY = window.innerHeight - this.offsetHeight;
             
-            // Keep chat within new bounds
-            if (this.offsetWidth > newMaxWidth) {
-                this.style.width = newMaxWidth + 'px';
-            }
-            if (this.offsetHeight > newMaxHeight) {
-                this.style.height = newMaxHeight + 'px';
-            }
+            if (rect.left < 0) this.style.left = '0px';
+            if (rect.top < 0) this.style.top = '0px';
+            if (rect.left > maxX) this.style.left = maxX + 'px';
+            if (rect.top > maxY) this.style.top = maxY + 'px';
         });
     }
 
