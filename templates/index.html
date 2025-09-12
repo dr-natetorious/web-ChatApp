@@ -1,0 +1,627 @@
+{% extends "base.html" %}
+
+{% block title %}SecureBank - Online Banking Dashboard{% endblock %}
+
+{% block extra_css %}
+<style>
+    :root {
+        --bank-primary: #1e3a8a;
+        --bank-secondary: #3b82f6;
+        --bank-success: #059669;
+        --bank-warning: #d97706;
+        --bank-danger: #dc2626;
+    }
+
+    .navbar-dark {
+        background-color: var(--bank-primary) !important;
+    }
+
+    .account-card {
+        border-left: 4px solid var(--bank-secondary);
+        transition: transform 0.2s ease-in-out;
+    }
+
+    .account-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+
+    .balance-amount {
+        font-size: 1.8rem;
+        font-weight: 700;
+        color: var(--bank-primary);
+    }
+
+    .transaction-item {
+        border-bottom: 1px solid #e5e7eb;
+        padding: 12px 0;
+    }
+
+    .transaction-item:last-child {
+        border-bottom: none;
+    }
+
+    .transaction-amount.positive {
+        color: var(--bank-success);
+    }
+
+    .transaction-amount.negative {
+        color: var(--bank-danger);
+    }
+
+    .quick-action-btn {
+        border-radius: 12px;
+        padding: 15px;
+        text-decoration: none;
+        transition: all 0.3s ease;
+    }
+
+    .quick-action-btn:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+    }
+
+    .security-badge {
+        background: linear-gradient(45deg, var(--bank-success), #10b981);
+        color: white;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.8rem;
+    }
+
+    .chart-container {
+        position: relative;
+        height: 300px;
+        background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    /* Banking-specific sidebar customizations */
+    .sidebar .sidebar-link:hover {
+        background: rgba(255,255,255,0.2);
+        transform: translateX(6px);
+    }
+    
+    .security-alert {
+        position: absolute;
+        bottom: 20px;
+        left: 16px;
+        right: 16px;
+        background: rgba(255,255,255,0.1);
+        border: 1px solid rgba(255,255,255,0.2);
+        border-radius: 8px;
+        padding: 12px;
+        color: rgba(255,255,255,0.9);
+        font-size: 12px;
+        opacity: 0;
+        transition: opacity 0.3s ease 0.2s;
+    }
+    
+    .sidebar:hover .security-alert {
+        opacity: 1;
+    }
+</style>
+{% endblock %}
+
+{% block sidebar %}
+<div class="sidebar" id="sidebar">
+    <div class="sidebar-item">
+        <h6 class="sidebar-heading">Banking Services</h6>
+    </div>
+    
+    <div class="sidebar-item">
+        <a class="sidebar-link" href="/accounts">
+            <i class="bi bi-credit-card"></i>
+            <span class="sidebar-text">My Accounts</span>
+        </a>
+    </div>
+    
+    <div class="sidebar-item">
+        <a class="sidebar-link" href="/transfer">
+            <i class="bi bi-arrow-left-right"></i>
+            <span class="sidebar-text">Transfer Money</span>
+        </a>
+    </div>
+    
+    <div class="sidebar-item">
+        <a class="sidebar-link" href="/payments">
+            <i class="bi bi-receipt"></i>
+            <span class="sidebar-text">Pay Bills</span>
+        </a>
+    </div>
+    
+    <div class="sidebar-item">
+        <a class="sidebar-link" href="/investments">
+            <i class="bi bi-graph-up-arrow"></i>
+            <span class="sidebar-text">Investments</span>
+        </a>
+    </div>
+    
+    <div class="sidebar-item">
+        <h6 class="sidebar-heading">Support</h6>
+    </div>
+    
+    <div class="sidebar-item">
+        <a class="sidebar-link" href="/help">
+            <i class="bi bi-question-circle"></i>
+            <span class="sidebar-text">Help Center</span>
+        </a>
+    </div>
+    
+    <div class="sidebar-item">
+        <a class="sidebar-link" href="/contact">
+            <i class="bi bi-telephone"></i>
+            <span class="sidebar-text">Contact Us</span>
+        </a>
+    </div>
+    
+    <div class="sidebar-item">
+        <a class="sidebar-link" href="/security">
+            <i class="bi bi-shield-check"></i>
+            <span class="sidebar-text">Security Center</span>
+        </a>
+    </div>
+    
+    <div class="security-alert">
+        <i class="bi bi-shield-fill-check me-2"></i>
+        <small>Protected with 256-bit SSL encryption</small>
+    </div>
+</div>
+{% endblock %}
+
+{% block page_title %}Dashboard{% endblock %}
+
+{% block header_actions %}
+<div class="btn-toolbar mb-2 mb-md-0">
+    <div class="btn-group me-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary">Export</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary">Settings</button>
+    </div>
+    <span class="security-badge">
+        <i class="bi bi-shield-fill-check me-1"></i>
+        Secure Session
+    </span>
+</div>
+{% endblock %}
+
+{% block content %}
+<!-- Welcome Section -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="alert alert-primary" role="alert">
+            <h4 class="alert-heading">
+                <i class="bi bi-person-check-fill me-2"></i>
+                Welcome back, John Doe!
+            </h4>
+            <p class="mb-0">Last login: Today at 9:45 AM from Chrome on Windows</p>
+        </div>
+    </div>
+</div>
+
+<!-- Account Overview -->
+<div class="row mb-4">
+    <div class="col-md-4 mb-3">
+        <div class="card account-card h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h6 class="card-subtitle mb-2 text-muted">Checking Account</h6>
+                        <h5 class="card-title">****1234</h5>
+                        <p class="balance-amount mb-0">$12,450.75</p>
+                    </div>
+                    <i class="bi bi-credit-card-2-front fs-3 text-primary"></i>
+                </div>
+                <div class="mt-3">
+                    <small class="text-muted">Available Balance</small>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4 mb-3">
+        <div class="card account-card h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h6 class="card-subtitle mb-2 text-muted">Savings Account</h6>
+                        <h5 class="card-title">****5678</h5>
+                        <p class="balance-amount mb-0">$45,280.90</p>
+                    </div>
+                    <i class="bi bi-piggy-bank fs-3 text-success"></i>
+                </div>
+                <div class="mt-3">
+                    <small class="text-success">+2.1% APY</small>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4 mb-3">
+        <div class="card account-card h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h6 class="card-subtitle mb-2 text-muted">Credit Card</h6>
+                        <h5 class="card-title">****9012</h5>
+                        <p class="balance-amount mb-0">$2,150.25</p>
+                    </div>
+                    <i class="bi bi-credit-card fs-3 text-warning"></i>
+                </div>
+                <div class="mt-3">
+                    <small class="text-muted">$15,000 limit</small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="row mb-4">
+    <div class="col-12">
+        <h5 class="mb-3">Quick Actions</h5>
+    </div>
+    <div class="col-md-3 col-sm-6 mb-3">
+        <a href="/transfer" class="quick-action-btn bg-primary text-white d-block text-center">
+            <i class="bi bi-arrow-left-right fs-1 d-block mb-2"></i>
+            <strong>Transfer Money</strong>
+        </a>
+    </div>
+    <div class="col-md-3 col-sm-6 mb-3">
+        <a href="/payments" class="quick-action-btn bg-success text-white d-block text-center">
+            <i class="bi bi-receipt fs-1 d-block mb-2"></i>
+            <strong>Pay Bills</strong>
+        </a>
+    </div>
+    <div class="col-md-3 col-sm-6 mb-3">
+        <a href="/deposit" class="quick-action-btn bg-info text-white d-block text-center">
+            <i class="bi bi-download fs-1 d-block mb-2"></i>
+            <strong>Mobile Deposit</strong>
+        </a>
+    </div>
+    <div class="col-md-3 col-sm-6 mb-3">
+        <a href="/statements" class="quick-action-btn bg-secondary text-white d-block text-center">
+            <i class="bi bi-file-earmark-text fs-1 d-block mb-2"></i>
+            <strong>Statements</strong>
+        </a>
+    </div>
+</div>
+
+<!-- Recent Transactions and Spending Chart -->
+<div class="row">
+    <div class="col-md-8 mb-4">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Recent Transactions</h5>
+                <a href="/transactions" class="btn btn-sm btn-outline-primary">View All</a>
+            </div>
+            <div class="card-body">
+                <div class="transaction-item">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="d-flex align-items-center">
+                            <div class="bg-success rounded-circle p-2 me-3">
+                                <i class="bi bi-plus text-white"></i>
+                            </div>
+                            <div>
+                                <strong>Salary Deposit</strong>
+                                <div class="text-muted small">Today, 9:00 AM</div>
+                            </div>
+                        </div>
+                        <span class="transaction-amount positive">+$3,500.00</span>
+                    </div>
+                </div>
+                
+                <div class="transaction-item">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="d-flex align-items-center">
+                            <div class="bg-primary rounded-circle p-2 me-3">
+                                <i class="bi bi-shop text-white"></i>
+                            </div>
+                            <div>
+                                <strong>Amazon Purchase</strong>
+                                <div class="text-muted small">Yesterday, 2:30 PM</div>
+                            </div>
+                        </div>
+                        <span class="transaction-amount negative">-$89.99</span>
+                    </div>
+                </div>
+                
+                <div class="transaction-item">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="d-flex align-items-center">
+                            <div class="bg-warning rounded-circle p-2 me-3">
+                                <i class="bi bi-fuel-pump text-white"></i>
+                            </div>
+                            <div>
+                                <strong>Gas Station</strong>
+                                <div class="text-muted small">Yesterday, 8:15 AM</div>
+                            </div>
+                        </div>
+                        <span class="transaction-amount negative">-$45.67</span>
+                    </div>
+                </div>
+                
+                <div class="transaction-item">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="d-flex align-items-center">
+                            <div class="bg-info rounded-circle p-2 me-3">
+                                <i class="bi bi-cup-hot text-white"></i>
+                            </div>
+                            <div>
+                                <strong>Coffee Shop</strong>
+                                <div class="text-muted small">Sep 9, 7:45 AM</div>
+                            </div>
+                        </div>
+                        <span class="transaction-amount negative">-$5.75</span>
+                    </div>
+                </div>
+                
+                <div class="transaction-item">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="d-flex align-items-center">
+                            <div class="bg-success rounded-circle p-2 me-3">
+                                <i class="bi bi-arrow-up text-white"></i>
+                            </div>
+                            <div>
+                                <strong>Interest Payment</strong>
+                                <div class="text-muted small">Sep 8, 12:00 PM</div>
+                            </div>
+                        </div>
+                        <span class="transaction-amount positive">+$12.45</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Spending Overview</h5>
+            </div>
+            <div class="card-body">
+                <div class="chart-container">
+                    <div class="text-center">
+                        <i class="bi bi-pie-chart fs-1 text-primary mb-3"></i>
+                        <h6>Monthly Spending</h6>
+                        <p class="text-muted">September 2025</p>
+                        <div class="mt-3">
+                            <div class="d-flex justify-content-between mb-2">
+                                <span class="text-muted">Groceries</span>
+                                <strong>$450</strong>
+                            </div>
+                            <div class="d-flex justify-content-between mb-2">
+                                <span class="text-muted">Gas</span>
+                                <strong>$180</strong>
+                            </div>
+                            <div class="d-flex justify-content-between mb-2">
+                                <span class="text-muted">Entertainment</span>
+                                <strong>$120</strong>
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <span class="text-muted">Other</span>
+                                <strong>$250</strong>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Financial Insights -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-lightbulb me-2"></i>
+                    Financial Insights
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="alert alert-success" role="alert">
+                            <h6 class="alert-heading">
+                                <i class="bi bi-trophy me-2"></i>
+                                Great Job!
+                            </h6>
+                            <p class="mb-0">You've saved 15% more this month compared to last month.</p>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="alert alert-info" role="alert">
+                            <h6 class="alert-heading">
+                                <i class="bi bi-info-circle me-2"></i>
+                                Tip
+                            </h6>
+                            <p class="mb-0">Consider setting up automatic transfers to boost your savings.</p>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="alert alert-warning" role="alert">
+                            <h6 class="alert-heading">
+                                <i class="bi bi-exclamation-triangle me-2"></i>
+                                Reminder
+                            </h6>
+                            <p class="mb-0">Your credit card payment is due in 5 days.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Chat Widget Container -->
+<!-- Chat Widget -->
+<chitchat-component 
+    id="chat-widget" 
+    style="position: fixed; bottom: 20px; right: 20px; z-index: 1050; display: none;"
+    current-user='{"id": "user", "name": "John Doe", "avatar": null}'
+    theme="light"
+    enable-rich-messages="true">
+</chitchat-component>
+
+<!-- Chat Toggle Button -->
+<button id="chat-toggle" class="btn btn-primary" style="position: fixed; bottom: 20px; right: 20px; z-index: 1051; border-radius: 50%; width: 60px; height: 60px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+    <i class="bi bi-chat-dots-fill fs-4"></i>
+</button>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Initialize ChitChat component
+    let chatWidget = null;
+    let isChatOpen = false;
+
+    document.getElementById('chat-toggle').addEventListener('click', function() {
+        const chatContainer = document.getElementById('chat-widget');
+        const toggleButton = document.getElementById('chat-toggle');
+        
+        if (!isChatOpen) {
+            // Get the web component and show chat
+            chatWidget = chatContainer;
+            
+            chatContainer.style.display = 'block';
+            chatContainer.style.animation = 'chatSlideIn 0.3s ease-out forwards';
+            toggleButton.innerHTML = '<i class="bi bi-x-lg fs-4"></i>';
+            isChatOpen = true;
+            
+            // Demo: Add some sample messages after showing
+            setTimeout(() => {
+                chatWidget.addMessage({
+                    type: 'text',
+                    content: 'Hello! I\'m here to help you with your banking needs. How can I assist you today?',
+                    sender: 'support'
+                });
+                
+                chatWidget.addQuickReply(
+                    'Here are some common questions I can help with:',
+                    ['Check Balance', 'Transfer Money', 'Pay Bills', 'Account Security']
+                );
+            }, 1000);
+            
+            // Demo: Show rich message examples
+            setTimeout(() => {
+                chatWidget.addTable(
+                    'Recent Transactions',
+                    ['Date', 'Description', 'Amount'],
+                    [
+                        ['Sep 11', 'Coffee Shop', '-$5.75'],
+                        ['Sep 10', 'Salary Deposit', '+$3,500.00'],
+                        ['Sep 9', 'Gas Station', '-$45.67']
+                    ]
+                );
+            }, 3000);
+        } else {
+            // Hide chat
+            chatContainer.style.animation = 'chatSlideOut 0.3s ease-in forwards';
+            setTimeout(() => {
+                chatContainer.style.display = 'none';
+            }, 300);
+            toggleButton.innerHTML = '<i class="bi bi-chat-dots-fill fs-4"></i>';
+            isChatOpen = false;
+        }
+    });
+
+    // Add chat animations
+    const chatAnimationStyles = document.createElement('style');
+    chatAnimationStyles.textContent = `
+        @keyframes chatSlideIn {
+            from {
+                opacity: 0;
+                transform: translateY(100%) scale(0.8);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+        
+        @keyframes chatSlideOut {
+            from {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+            to {
+                opacity: 0;
+                transform: translateY(100%) scale(0.8);
+            }
+        }
+        
+        #chat-toggle {
+            transition: all 0.3s ease;
+        }
+        
+        #chat-toggle:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+        }
+        
+        #chat-widget {
+            display: none;
+            transform-origin: bottom right;
+        }
+    `;
+    document.head.appendChild(chatAnimationStyles);
+
+    // Simulate real-time balance updates
+    setInterval(function() {
+        // This would normally fetch real data from an API
+        console.log('Checking for balance updates...');
+    }, 30000);
+
+    // Add click tracking for quick actions
+    document.querySelectorAll('.quick-action-btn').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            console.log('Quick action clicked:', this.textContent.trim());
+            
+            // Demo: Show chat with relevant message
+            if (!isChatOpen) {
+                document.getElementById('chat-toggle').click();
+            }
+            
+            setTimeout(() => {
+                if (chatWidget) {
+                    const action = this.textContent.trim();
+                    chatWidget.addMessage({
+                        type: 'text',
+                        content: `I'd like to ${action.toLowerCase()}`,
+                        sender: 'user'
+                    });
+                    
+                    setTimeout(() => {
+                        chatWidget.addMessage({
+                            type: 'text',
+                            content: `I'd be happy to help you with ${action.toLowerCase()}. Let me guide you through the process.`,
+                            sender: 'support'
+                        });
+                    }, 1000);
+                }
+            }, 500);
+        });
+    });
+
+    // Add security session timeout warning
+    let sessionTimeout = 30 * 60 * 1000; // 30 minutes
+    setTimeout(function() {
+        if (confirm('Your session will expire in 5 minutes. Would you like to extend it?')) {
+            // Extend session
+            console.log('Session extended');
+            
+            // Show confirmation in chat if open
+            if (chatWidget && isChatOpen) {
+                chatWidget.addMessage({
+                    type: 'system',
+                    content: 'Session extended successfully. You can continue banking safely.'
+                });
+            }
+        }
+    }, sessionTimeout - 5 * 60 * 1000);
+</script>
+{% endblock %}
