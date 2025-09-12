@@ -1,0 +1,110 @@
+/**
+ * Banking App Specific Styles
+ * Theme and layout styles for the SecureBank dashboard
+ */
+
+:root {
+    --bank-primary: #1e3a8a;
+    --bank-secondary: #3b82f6;
+    --bank-success: #059669;
+    --bank-warning: #d97706;
+    --bank-danger: #dc2626;
+}
+
+/* Navigation Override */
+.navbar-dark {
+    background-color: var(--bank-primary) !important;
+}
+
+/* Account Cards */
+.account-card {
+    border-left: 4px solid var(--bank-secondary);
+    transition: transform 0.2s ease-in-out;
+}
+
+.account-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.balance-amount {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--bank-primary);
+}
+
+/* Transaction List */
+.transaction-item {
+    border-bottom: 1px solid #e5e7eb;
+    padding: 12px 0;
+}
+
+.transaction-item:last-child {
+    border-bottom: none;
+}
+
+.transaction-amount.positive {
+    color: var(--bank-success);
+}
+
+.transaction-amount.negative {
+    color: var(--bank-danger);
+}
+
+/* Quick Actions */
+.quick-action-btn {
+    border-radius: 12px;
+    padding: 15px;
+    text-decoration: none;
+    transition: all 0.3s ease;
+}
+
+.quick-action-btn:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+}
+
+/* Security Elements */
+.security-badge {
+    background: linear-gradient(45deg, var(--bank-success), #10b981);
+    color: white;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+}
+
+.security-alert {
+    position: absolute;
+    bottom: 20px;
+    left: 16px;
+    right: 16px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    padding: 12px;
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 12px;
+    opacity: 0;
+    transition: opacity 0.3s ease 0.2s;
+}
+
+.sidebar:hover .security-alert {
+    opacity: 1;
+}
+
+/* Chart Container */
+.chart-container {
+    position: relative;
+    height: 300px;
+    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Banking-specific Sidebar Customizations */
+.sidebar .sidebar-link:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: translateX(6px);
+}
