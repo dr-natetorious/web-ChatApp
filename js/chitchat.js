@@ -1038,35 +1038,65 @@ class ChitChatComponent extends HTMLElement {
     }
 
     registerDefaultMessageTypes() {
-        // Message types are now registered via the MessageRegistry
-        // This allows for extensibility and clean separation of concerns
+        // Register basic message handlers directly
+        this.registerMessageType('text', (message) => this.escapeHtml(message.content || ''));
+        
+        this.registerMessageType('system', (message) => this.escapeHtml(message.content || ''));
+        
+        this.registerMessageType('image', (message) => {
+            const caption = message.caption ? `<p class="mt-2 mb-0 small text-muted">${this.escapeHtml(message.caption)}</p>` : '';
+            return `<img src="${this.escapeHtml(message.url)}" alt="${this.escapeHtml(message.caption || 'Image')}" class="message-image img-fluid rounded">${caption}`;
+        });
+        
+        this.registerMessageType('table', (message) => {
+            const title = message.title ? `<h6 class="mb-2">${this.escapeHtml(message.title)}</h6>` : '';
+            const headers = message.headers ? message.headers.map(h => `<th>${this.escapeHtml(h)}</th>`).join('') : '';
+            const rows = message.rows ? message.rows.map(row => 
+                `<tr>${row.map(cell => `<td>${this.escapeHtml(cell)}</td>`).join('')}</tr>`
+            ).join('') : '';
+            
+            return `${title}<table class="message-table table table-sm table-bordered">
+                <thead><tr>${headers}</tr></thead>
+                <tbody>${rows}</tbody>
+            </table>`;
+        });
+        
+        this.registerMessageType('quick_reply', (message) => {
+            const content = message.content ? `<p class="mb-2">${this.escapeHtml(message.content)}</p>` : '';
+            const replies = message.replies ? message.replies.map(reply => 
+                `<button class="quick-reply-btn btn btn-outline-primary btn-sm me-1 mb-1">${this.escapeHtml(reply)}</button>`
+            ).join('') : '';
+            
+            return `${content}<div class="quick-replies">${replies}</div>`;
+        });
+        
+        // Try to use advanced ChitChatMessages if available (for extensibility)
         if (typeof window.ChitChatMessages !== 'undefined') {
             const registry = window.ChitChatMessages.registry;
             
-            // Register message types with their handlers
+            // Register additional message types from registry
             for (const type of registry.getRegisteredTypes()) {
-                this.registerMessageType(type, (message) => {
-                    const messageImpl = registry.getMessageImplementation(type, this);
-                    
-                    // Validate message before rendering
-                    const validation = window.ChitChatMessages.MessageValidator.validate(message, messageImpl);
-                    if (!validation.valid) {
-                        console.warn(`Message validation failed for type ${type}:`, validation.errors);
-                        // Fall back to text message
-                        const textImpl = registry.getMessageImplementation('text', this);
-                        return textImpl.render({
-                            ...message,
-                            content: `[Invalid ${type} message: ${validation.errors.join(', ')}]`
-                        });
-                    }
-                    
-                    return messageImpl.render(message);
-                });
+                if (!this.messageHandlers.has(type)) {
+                    this.registerMessageType(type, (message) => {
+                        const messageImpl = registry.getMessageImplementation(type, this);
+                        
+                        // Validate message before rendering
+                        const validation = window.ChitChatMessages.MessageValidator.validate(message, messageImpl);
+                        if (!validation.valid) {
+                            this.otlc.warn(`Message validation failed for type ${type}`, { errors: validation.errors });
+                            // Fall back to text message
+                            return this.escapeHtml(`[Invalid ${type} message: ${validation.errors.join(', ')}]`);
+                        }
+                        
+                        return messageImpl.render(message);
+                    });
+                }
             }
-        } else {
-            console.warn('ChitChatMessages not loaded, using fallback text renderer');
-            this.registerMessageType('text', (message) => this.escapeHtml(message.content || ''));
         }
+        
+        this.otlc.debug('Message handlers registered', { 
+            types: Array.from(this.messageHandlers.keys()) 
+        });
     }
 
     registerMessageType(type, handler) {
