@@ -138,3 +138,14 @@ async def security(request: Request):
         "page_title": "Security Center",
         "active_section": "security"
     })
+
+@router.get("/prompt", response_class=HTMLResponse)
+async def claude_assistant(request: Request):
+    """
+    Claude AI Assistant chat interface
+    """
+    return templates.TemplateResponse("prompt.html", {
+        "request": request,
+        "page_title": "Claude AI Assistant",
+        "active_section": "assistant"
+    })
