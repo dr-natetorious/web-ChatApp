@@ -8,6 +8,9 @@ import uvicorn
 # Import web routes
 from api.webroutes import router as web_router
 
+# Import OTEL router
+from api.otel import otel_router, cleanup as otel_cleanup
+
 # Create FastAPI instance
 app = FastAPI(
     title="SecureBank - Online Banking System",
@@ -26,6 +29,23 @@ app.add_middleware(
 
 # Include web routes (HTML pages)
 app.include_router(web_router, tags=["Web Pages"])
+
+# Include OTEL router for OpenTelemetry data collection
+app.include_router(otel_router, tags=["OpenTelemetry"])
+
+# Startup and shutdown events
+@app.on_event("startup")
+async def startup_event():
+    """Initialize services on startup"""
+    print("🚀 SecureBank application starting up...")
+    print("📊 OpenTelemetry endpoints available at /otel/*")
+
+@app.on_event("shutdown") 
+async def shutdown_event():
+    """Cleanup on shutdown"""
+    print("🛑 SecureBank application shutting down...")
+    await otel_cleanup()
+    print("✅ Cleanup completed")
 
 # Mount static files
 app.mount("/js", StaticFiles(directory="js"), name="javascript")
