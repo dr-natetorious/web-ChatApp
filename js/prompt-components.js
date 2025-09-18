@@ -179,20 +179,14 @@ class FileManager extends HTMLElement {
                 
                 <input type="file" class="file-input d-none" multiple 
                        accept=".txt,.csv,.json,.pdf,.jpg,.jpeg,.png,.gif,.webp">
-                
-                <button type="button" class="btn-attach btn-icon" title="Attach files">
-                    📎
-                </button>
             </div>
         `;
     }
     
     setupEvents() {
         const fileInput = this.querySelector('.file-input');
-        const attachBtn = this.querySelector('.btn-attach');
         
         this.addEventListenerTracked(fileInput, 'change', this.handleFileSelect.bind(this));
-        this.addEventListenerTracked(attachBtn, 'click', this.openFileDialog.bind(this));
         
         // Setup drag and drop
         this.setupDropZone();
@@ -489,91 +483,156 @@ class OptionsPanel extends HTMLElement {
     
     render() {
         this.innerHTML = `
-            <div class="options-container">
-                <button type="button" class="btn-options btn-icon" title="Options">
+            <div class="dropdown">
+                <button class="btn-options btn-icon dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Data Sources">
                     ⚙️
                 </button>
                 
-                <div class="options-dropdown" style="display: none;">
-                    <div class="option-section">
-                        <div class="option-header">Context</div>
-                        <div class="option-toggle">
-                            <div class="toggle-info">
-                                <span>Project Context</span>
-                                <small>Include workspace files</small>
-                            </div>
-                            <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="projectContextToggle">
-                            </div>
-                        </div>
-                    </div>
+                <ul class="dropdown-menu dropdown-menu-end">
+                    <!-- Databricks Genie -->
+                    <li>
+                        <h6 class="dropdown-header">
+                            <i class="bi bi-database"></i> Databricks Genie
+                        </h6>
+                    </li>
+                    <li><a class="dropdown-item" href="#" data-source="databricks" data-space="analytics-prod">
+                        <span class="fw-medium">Analytics Production</span>
+                        <small class="text-muted d-block">Main analytics workspace</small>
+                    </a></li>
+                    <li><a class="dropdown-item" href="#" data-source="databricks" data-space="ml-experiments">
+                        <span class="fw-medium">ML Experiments</span>
+                        <small class="text-muted d-block">Machine learning sandbox</small>
+                    </a></li>
+                    <li><a class="dropdown-item" href="#" data-source="databricks" data-space="data-engineering">
+                        <span class="fw-medium">Data Engineering</span>
+                        <small class="text-muted d-block">ETL and data pipelines</small>
+                    </a></li>
                     
-                    <div class="option-section">
-                        <div class="option-header">Features</div>
-                        <div class="option-toggle">
-                            <div class="toggle-info">
-                                <span>Artifacts</span>
-                                <small>Code and documents</small>
-                            </div>
-                            <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="artifactsToggle">
-                            </div>
+                    <li><hr class="dropdown-divider"></li>
+                    
+                    <!-- Snowflake Cortex -->
+                    <li>
+                        <h6 class="dropdown-header">
+                            <i class="bi bi-snow"></i> Snowflake Cortex
+                        </h6>
+                    </li>
+                    <li><a class="dropdown-item" href="#" data-source="snowflake">
+                        <span class="fw-medium">Cortex Intelligence</span>
+                        <small class="text-muted d-block">AI-powered analytics</small>
+                    </a></li>
+                    
+                    <li><hr class="dropdown-divider"></li>
+                    
+                    <!-- LLM Suite -->
+                    <li>
+                        <h6 class="dropdown-header">
+                            <i class="bi bi-brain"></i> LLM Suite
+                        </h6>
+                    </li>
+                    <li><a class="dropdown-item" href="#" data-source="llm" data-kb="company-docs">
+                        <span class="fw-medium">Company Documentation</span>
+                        <small class="text-muted d-block">Internal knowledge base</small>
+                    </a></li>
+                    <li><a class="dropdown-item" href="#" data-source="llm" data-kb="technical-specs">
+                        <span class="fw-medium">Technical Specifications</span>
+                        <small class="text-muted d-block">API and system docs</small>
+                    </a></li>
+                    <li><a class="dropdown-item" href="#" data-source="llm" data-kb="customer-data">
+                        <span class="fw-medium">Customer Analytics</span>
+                        <small class="text-muted d-block">Customer insights and data</small>
+                    </a></li>
+                    
+                    <li><hr class="dropdown-divider"></li>
+                    
+                    <!-- Project Context Toggle -->
+                    <li class="px-3 py-2">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="projectContextToggle">
+                            <label class="form-check-label" for="projectContextToggle">
+                                Include Project Context
+                            </label>
                         </div>
-                        <div class="option-toggle">
-                            <div class="toggle-info">
-                                <span>Analysis</span>
-                                <small>Deep thinking mode</small>
-                            </div>
-                            <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="analysisToggle">
-                            </div>
-                        </div>
-                        <div class="option-toggle">
-                            <div class="toggle-info">
-                                <span>LaTeX</span>
-                                <small>Math rendering</small>
-                            </div>
-                            <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="latexToggle">
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                    </li>
+                </ul>
             </div>
         `;
     }
     
     setupEvents() {
-        const optionsBtn = this.querySelector('.btn-options');
-        this.addEventListenerTracked(optionsBtn, 'click', this.togglePanel.bind(this));
-        
-        // Setup toggles
-        const toggles = {
-            'projectContextToggle': 'useProjectContext',
-            'artifactsToggle': 'useArtifacts',
-            'analysisToggle': 'useAnalysis',
-            'latexToggle': 'useLatex'
-        };
-        
-        Object.entries(toggles).forEach(([id, property]) => {
-            const toggle = this.querySelector(`#${id}`);
-            if (toggle) {
-                this.addEventListenerTracked(toggle, 'change', (e) => {
-                    this.options[property] = e.target.checked;
-                    this.dispatchEvent(new CustomEvent('option-changed', {
-                        bubbles: true,
-                        detail: { property, value: e.target.checked, options: { ...this.options } }
-                    }));
-                });
-            }
+        // Setup data source selection
+        const dropdownItems = this.querySelectorAll('.dropdown-item[data-source]');
+        dropdownItems.forEach(item => {
+            this.addEventListenerTracked(item, 'click', (e) => {
+                e.preventDefault();
+                this.handleDataSourceSelect(e.target.closest('.dropdown-item'));
+            });
         });
         
-        // Close panel when clicking outside
-        this.addEventListenerTracked(document, 'click', (e) => {
-            if (this.isOpen && !this.contains(e.target)) {
-                this.closePanel();
-            }
+        // Setup project context toggle
+        const contextToggle = this.querySelector('#projectContextToggle');
+        if (contextToggle) {
+            this.addEventListenerTracked(contextToggle, 'change', (e) => {
+                this.options.useProjectContext = e.target.checked;
+                this.dispatchEvent(new CustomEvent('option-changed', {
+                    bubbles: true,
+                    detail: { 
+                        option: 'useProjectContext', 
+                        value: e.target.checked 
+                    }
+                }));
+            });
+        }
+    }
+    
+    handleDataSourceSelect(item) {
+        const source = item.dataset.source;
+        const space = item.dataset.space;
+        const kb = item.dataset.kb;
+        
+        let selection = { source };
+        if (space) selection.space = space;
+        if (kb) selection.knowledgeBase = kb;
+        
+        // Update UI to show selection
+        this.updateSelectedSource(item);
+        
+        // Dispatch event
+        this.dispatchEvent(new CustomEvent('data-source-changed', {
+            bubbles: true,
+            detail: selection
+        }));
+    }
+    
+    updateSelectedSource(selectedItem) {
+        // Remove previous selections
+        this.querySelectorAll('.dropdown-item').forEach(item => {
+            item.classList.remove('active');
         });
+        
+        // Mark current selection
+        selectedItem.classList.add('active');
+        
+        // Update button icon based on source
+        const button = this.querySelector('.btn-options');
+        const source = selectedItem.dataset.source;
+        
+        switch(source) {
+            case 'databricks':
+                button.innerHTML = '🔥';
+                button.title = `Databricks: ${selectedItem.querySelector('.fw-medium').textContent}`;
+                break;
+            case 'snowflake':
+                button.innerHTML = '❄️';
+                button.title = 'Snowflake Cortex';
+                break;
+            case 'llm':
+                button.innerHTML = '🧠';
+                button.title = `LLM Suite: ${selectedItem.querySelector('.fw-medium').textContent}`;
+                break;
+            default:
+                button.innerHTML = '🔌';
+                button.title = 'Data Sources';
+        }
     }
     
     addEventListenerTracked(element, event, handler) {
@@ -586,17 +645,6 @@ class OptionsPanel extends HTMLElement {
             element.removeEventListener(event, handler);
         });
         this.eventListeners = [];
-    }
-    
-    togglePanel() {
-        const dropdown = this.querySelector('.options-dropdown');
-        this.isOpen = !this.isOpen;
-        dropdown.style.display = this.isOpen ? 'block' : 'none';
-        
-        this.dispatchEvent(new CustomEvent('panel-toggled', {
-            bubbles: true,
-            detail: { isOpen: this.isOpen }
-        }));
     }
     
     closePanel() {

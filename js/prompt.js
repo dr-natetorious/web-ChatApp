@@ -60,9 +60,38 @@ class ChatInterface extends HTMLElement {
         this.addEventListenerTracked(this, 'file-error', this.handleFileError.bind(this));
         this.addEventListenerTracked(this, 'model-changed', this.handleModelChanged.bind(this));
         this.addEventListenerTracked(this, 'option-changed', this.handleOptionChanged.bind(this));
+        this.addEventListenerTracked(this, 'data-source-changed', this.handleDataSourceChanged.bind(this));
+        
+        // Setup control buttons
+        this.setupControlButtons();
         
         // Setup keyboard shortcuts
         this.setupKeyboardShortcuts();
+    }
+    
+    setupControlButtons() {
+        // Add file button
+        const addFileBtn = this.querySelector('#addFileBtn');
+        if (addFileBtn) {
+            this.addEventListenerTracked(addFileBtn, 'click', () => {
+                const fileManager = this.querySelector('file-manager');
+                if (fileManager) {
+                    fileManager.openFileDialog();
+                }
+            });
+        }
+        
+        // Clear conversation button
+        const clearBtn = this.querySelector('#clearBtn');
+        if (clearBtn) {
+            this.addEventListenerTracked(clearBtn, 'click', this.clearChat.bind(this));
+        }
+        
+        // Deep thinking mode button
+        const deepThinkBtn = this.querySelector('#deepThinkBtn');
+        if (deepThinkBtn) {
+            this.addEventListenerTracked(deepThinkBtn, 'click', this.toggleDeepThinking.bind(this));
+        }
     }
     
     addEventListenerTracked(element, event, handler) {
@@ -174,6 +203,66 @@ class ChatInterface extends HTMLElement {
     handleOptionChanged(e) {
         const { property, value } = e.detail;
         this.announceToScreenReader(`${property} ${value ? 'enabled' : 'disabled'}`);
+    }
+    
+    handleDataSourceChanged(e) {
+        const { source, space, knowledgeBase } = e.detail;
+        let message = `Data source changed to ${source}`;
+        if (space) message += ` (${space})`;
+        if (knowledgeBase) message += ` (${knowledgeBase})`;
+        
+        this.announceToScreenReader(message);
+        console.log('Data source selected:', e.detail);
+    }
+    
+    toggleDeepThinking() {
+        const btn = this.querySelector('#deepThinkBtn');
+        const isActive = btn.classList.toggle('active');
+        
+        // Update button appearance
+        if (isActive) {
+            btn.style.backgroundColor = 'var(--chat-accent)';
+            btn.style.color = 'white';
+            btn.title = 'Disable deep thinking mode';
+        } else {
+            btn.style.backgroundColor = '';
+            btn.style.color = '';
+            btn.title = 'Enable deep thinking mode';
+        }
+        
+        this.announceToScreenReader(`Deep thinking mode ${isActive ? 'enabled' : 'disabled'}`);
+        
+        // Dispatch event
+        this.dispatchEvent(new CustomEvent('deep-thinking-changed', {
+            bubbles: true,
+            detail: { enabled: isActive }
+        }));
+    }
+    
+    clearChat() {
+        if (confirm('Are you sure you want to clear the conversation?')) {
+            // Clear any existing conversation display
+            console.log('Clearing chat...');
+            this.announceToScreenReader('Conversation cleared');
+            
+            // Clear file manager
+            const fileManager = this.querySelector('file-manager');
+            if (fileManager) {
+                fileManager.clearFiles();
+            }
+            
+            // Clear prompt input
+            const promptInput = this.querySelector('prompt-input');
+            if (promptInput) {
+                promptInput.clear();
+            }
+            
+            // Dispatch custom event
+            this.dispatchEvent(new CustomEvent('chat:conversation-cleared', {
+                bubbles: true,
+                detail: { timestamp: new Date().toISOString() }
+            }));
+        }
     }
     
     async processFiles(files) {
