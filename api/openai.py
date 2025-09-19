@@ -1,23 +1,31 @@
 """
 FastAPI router for OpenAI-compatible chat completions using AWS Bedrock.
+Supports both regular and streaming responses via SSE.
 """
 
 import boto3
 import json
 import uuid
+import time
 import logging
+import asyncio
 from datetime import datetime
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
+from typing import AsyncGenerator
 
-from .models import (
+from core.models import (
     ChatMessage,
     ChatCompletionRequest,
     ChatCompletionChoice,
     ChatCompletionUsage,
-    ChatCompletionResponse
+    ChatCompletionResponse,
+    ChatCompletionStreamResponse,
+    ChatCompletionStreamChoice,
+    ChatCompletionStreamChoiceDelta
 )
-from .llm import create_llm
-from .utils import parse_tool_call, estimate_tokens
+from core.llm import create_llm
+from core.utils import parse_tool_call, estimate_tokens
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -27,11 +35,134 @@ logger = logging.getLogger(__name__)
 bedrock_client = boto3.client('bedrock-runtime')
 
 # Create router
-router = APIRouter(prefix="/v1", tags=["chat"])
+router = APIRouter(tags=["chat"])
 
 
 @router.post("/chat/completions")
-async def create_chat_completion(request: ChatCompletionRequest) -> ChatCompletionResponse:
+async def create_chat_completion(request: ChatCompletionRequest):
+    """Create a chat completion using AWS Bedrock with optional streaming."""
+    
+    if request.stream:
+        return StreamingResponse(
+            stream_chat_completion(request),
+            media_type="text/plain",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"
+            }
+        )
+    else:
+        return await create_non_streaming_completion(request)
+
+
+async def stream_chat_completion(request: ChatCompletionRequest) -> AsyncGenerator[str, None]:
+    """Stream chat completion tokens via Server-Sent Events."""
+    
+    # Convert messages to Bedrock format
+    bedrock_messages = []
+    for msg in request.messages:
+        bedrock_messages.append({
+            "role": msg.role,
+            "content": [{"text": msg.content}]
+        })
+    
+    # Build Bedrock request
+    bedrock_request = {
+        "modelId": request.model,
+        "messages": bedrock_messages,
+        "inferenceConfig": {
+            "maxTokens": request.max_tokens or 2048,
+            "temperature": request.temperature or 0.7,
+            "topP": request.top_p or 0.9,
+        },
+        "system": [{"text": "You are a helpful AI assistant."}]
+    }
+    
+    try:
+        # Create streaming response
+        response = bedrock_client.converse_stream(**bedrock_request)
+        
+        completion_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
+        created = int(time.time())
+        
+        # Send initial chunk with role
+        initial_chunk = ChatCompletionStreamResponse(
+            id=completion_id,
+            object="chat.completion.chunk",
+            created=created,
+            model=request.model,
+            choices=[
+                ChatCompletionStreamChoice(
+                    index=0,
+                    delta=ChatCompletionStreamChoiceDelta(role="assistant"),
+                    finish_reason=None
+                )
+            ]
+        )
+        yield f"data: {initial_chunk.model_dump_json()}\n\n"
+        
+        # Stream content chunks
+        for event in response.get('stream', []):
+            if 'contentBlockDelta' in event:
+                content = event['contentBlockDelta']['delta'].get('text', '')
+                if content:
+                    chunk = ChatCompletionStreamResponse(
+                        id=completion_id,
+                        object="chat.completion.chunk",
+                        created=created,
+                        model=request.model,
+                        choices=[
+                            ChatCompletionStreamChoice(
+                                index=0,
+                                delta=ChatCompletionStreamChoiceDelta(content=content),
+                                finish_reason=None
+                            )
+                        ]
+                    )
+                    yield f"data: {chunk.model_dump_json()}\n\n"
+            
+            elif 'messageStop' in event:
+                # Send final chunk with finish_reason
+                final_chunk = ChatCompletionStreamResponse(
+                    id=completion_id,
+                    object="chat.completion.chunk",
+                    created=created,
+                    model=request.model,
+                    choices=[
+                        ChatCompletionStreamChoice(
+                            index=0,
+                            delta=ChatCompletionStreamChoiceDelta(),
+                            finish_reason="stop"
+                        )
+                    ]
+                )
+                yield f"data: {final_chunk.model_dump_json()}\n\n"
+                break
+        
+        # Send final [DONE] message
+        yield "data: [DONE]\n\n"
+        
+    except Exception as e:
+        logger.error(f"Streaming error: {e}")
+        error_chunk = ChatCompletionStreamResponse(
+            id=f"chatcmpl-{uuid.uuid4().hex[:12]}",
+            object="chat.completion.chunk",
+            created=int(time.time()),
+            model=request.model,
+            choices=[
+                ChatCompletionStreamChoice(
+                    index=0,
+                    delta=ChatCompletionStreamChoiceDelta(),
+                    finish_reason="error"
+                )
+            ]
+        )
+        yield f"data: {error_chunk.model_dump_json()}\n\n"
+        yield "data: [DONE]\n\n"
+
+
+async def create_non_streaming_completion(request: ChatCompletionRequest) -> ChatCompletionResponse:
     """Create a chat completion using AWS Bedrock."""
     
     try:

@@ -11,6 +11,9 @@ from api.webroutes import router as web_router
 # Import OTEL router
 from api.otel import otel_router, cleanup as otel_cleanup
 
+# Import OpenAI router
+from api.openai import router as openai_router
+
 # Create FastAPI instance
 app = FastAPI(
     title="SecureBank - Online Banking System",
@@ -32,6 +35,9 @@ app.include_router(web_router, tags=["Web Pages"])
 
 # Include OTEL router for OpenTelemetry data collection
 app.include_router(otel_router, tags=["OpenTelemetry"])
+
+# Include OpenAI-compatible API router
+app.include_router(openai_router, prefix='/v1', tags=["OpenAI API"])
 
 # Startup and shutdown events
 @app.on_event("startup")

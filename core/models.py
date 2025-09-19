@@ -48,3 +48,25 @@ class ChatCompletionResponse(BaseModel):
     model: str
     choices: List[ChatCompletionChoice]
     usage: ChatCompletionUsage
+
+
+# Streaming response models
+class ChatCompletionStreamChoiceDelta(BaseModel):
+    role: Optional[str] = None
+    content: Optional[str] = None
+    tool_calls: Optional[List[Dict[str, Any]]] = None
+
+
+class ChatCompletionStreamChoice(BaseModel):
+    index: int
+    delta: ChatCompletionStreamChoiceDelta
+    finish_reason: Optional[str] = None
+
+
+class ChatCompletionStreamResponse(BaseModel):
+    id: str
+    object: str = "chat.completion.chunk"
+    created: int
+    model: str
+    choices: List[ChatCompletionStreamChoice]
+    usage: Optional[ChatCompletionUsage] = None

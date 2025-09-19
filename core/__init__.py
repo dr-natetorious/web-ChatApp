@@ -18,7 +18,6 @@ from .llm import (
     create_llm
 )
 
-from .router import router
 from .utils import parse_tool_call, estimate_tokens
 
 __all__ = [
@@ -32,7 +31,6 @@ __all__ = [
     "LlamaLLM", 
     "NovaLLM",
     "create_llm",
-    "router",
     "parse_tool_call",
     "estimate_tokens"
 ]
