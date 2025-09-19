@@ -272,8 +272,36 @@ class ChitChatComponent extends HTMLElement {
 
                 <!-- Prompt Input Component (replacing old input) -->
                 <div class="chitchat-input-container">
-                    <prompt-input></prompt-input>
+                    <!-- File Manager Component -->
                     <file-manager></file-manager>
+
+                    <!-- Main Input Component -->
+                    <prompt-input></prompt-input>
+                </div>
+                
+                <!-- Controls Bar (separate container) -->
+                <div class="chitchat-controls-container">
+                    <div class="controls-bar">
+                        <div class="controls-left">
+                            <button type="button" class="btn-icon" id="addFileBtn" title="Add files" aria-label="Add files">
+                                📎
+                            </button>
+                            <button type="button" class="btn-icon" id="clearBtn" title="Clear conversation" aria-label="Clear conversation">
+                                🗑️
+                            </button>
+                        </div>
+                        
+                        <div class="controls-center">
+                            <!-- Options Panel Component -->
+                            <options-panel></options-panel>
+                        </div>
+                        
+                        <div class="controls-right">
+                            <button type="button" class="btn-control" id="deepThinkBtn" title="Enable deep thinking mode">
+                                🧠 Think
+                            </button>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Chat Resizer Component -->
@@ -331,6 +359,11 @@ class ChitChatComponent extends HTMLElement {
         this.addEventListener('file-removed', this.handleFileRemoved.bind(this));
         this.addEventListener('chat-resized', this.handleChatResized.bind(this));
         this.addEventListener('quick-reply-selected', this.handleQuickReplySelected.bind(this));
+        this.addEventListener('option-changed', this.handleOptionChanged.bind(this));
+        this.addEventListener('data-source-changed', this.handleDataSourceChanged.bind(this));
+
+        // Setup control buttons
+        this.setupControlButtons();
 
         // Quick reply handling (backward compatibility)
         this.addEventListener('click', (e) => {
@@ -341,6 +374,35 @@ class ChitChatComponent extends HTMLElement {
 
         // Custom resize functionality
         this.setupCustomResize();
+    }
+    
+    setupControlButtons() {
+        // Add file button
+        const addFileBtn = this.querySelector('#addFileBtn');
+        if (addFileBtn) {
+            addFileBtn.addEventListener('click', () => {
+                const fileManager = this.querySelector('file-manager');
+                if (fileManager) {
+                    fileManager.openFileDialog();
+                }
+            });
+        }
+        
+        // Clear conversation button  
+        const clearBtn = this.querySelector('#clearBtn');
+        if (clearBtn) {
+            clearBtn.addEventListener('click', () => {
+                this.clear();
+            });
+        }
+        
+        // Deep thinking mode button
+        const deepThinkBtn = this.querySelector('#deepThinkBtn');
+        if (deepThinkBtn) {
+            deepThinkBtn.addEventListener('click', () => {
+                this.toggleDeepThinking();
+            });
+        }
     }
     
     handleHeaderAction(e) {
@@ -391,6 +453,36 @@ class ChitChatComponent extends HTMLElement {
         // Handle quick reply selection from chat-messages
         const { reply } = e.detail;
         this.handleQuickReply(reply);
+    }
+    
+    handleOptionChanged(e) {
+        const { property, value } = e.detail;
+        console.log(`[ChitChat] Option changed: ${property} = ${value}`);
+    }
+    
+    handleDataSourceChanged(e) {
+        const { source, space, knowledgeBase } = e.detail;
+        console.log(`[ChitChat] Data source changed:`, { source, space, knowledgeBase });
+    }
+    
+    toggleDeepThinking() {
+        const btn = this.querySelector('#deepThinkBtn');
+        const isActive = btn.classList.toggle('active');
+        
+        // Update button appearance
+        if (isActive) {
+            btn.style.backgroundColor = 'var(--chat-accent, #007bff)';
+            btn.style.color = 'white';
+            btn.title = 'Disable deep thinking mode';
+            btn.innerHTML = '🧠 Deep';
+        } else {
+            btn.style.backgroundColor = '';
+            btn.style.color = '';
+            btn.title = 'Enable deep thinking mode';
+            btn.innerHTML = '🧠 Think';
+        }
+        
+        console.log(`[ChitChat] Deep thinking mode ${isActive ? 'enabled' : 'disabled'}`);
     }
 
     setupCustomResize() {
