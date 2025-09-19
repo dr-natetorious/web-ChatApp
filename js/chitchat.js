@@ -4,8 +4,18 @@
  * Built with vanilla JavaScript and Bootstrap 5.3
  */
 
-// Import message components to register them
+console.log('[ChitChat] Main file loading...');
+
+// Test import
+import { testValue } from './test-module.js';
+console.log('[ChitChat] Test import result:', testValue);
+
+// Import component definitions
 import './messages.js';
+import './chitchat-components.js';
+import './prompt-components.js';
+
+console.log('[ChitChat] All imports completed');
 
 class ChitChatComponent extends HTMLElement {
     constructor() {
@@ -244,84 +254,30 @@ class ChitChatComponent extends HTMLElement {
         // Apply responsive styling to the component itself
         this.applyResponsiveStyles();
         
+        console.log('[ChitChat] Creating interface with new component architecture');
+        
         this.innerHTML = `
             <div class="chitchat-container" data-theme="${this.options.theme}" data-screen-type="${this.screenType}">
-                <!-- Chat Header -->
-                <div class="chitchat-header ${this.options.compactMode ? 'compact' : ''}">
-                    <div class="d-flex align-items-center justify-content-between w-100">
-                        <div class="d-flex align-items-center">
-                            <div class="chat-avatar me-3">
-                                <div class="avatar-placeholder bg-primary text-white rounded-circle d-flex align-items-center justify-content-center">
-                                    <i class="bi bi-chat-dots-fill"></i>
-                                </div>
-                            </div>
-                            <div>
-                                <h6 class="mb-0 fw-semibold">SecureBank Support</h6>
-                                <small class="text-muted">
-                                    <span class="status-indicator online"></span>
-                                    Online - Typically replies instantly
-                                </small>
-                            </div>
-                        </div>
-                        <div class="chat-actions d-flex">
-                            <button class="btn btn-sm btn-outline-light me-1" data-action="help" title="Help">
-                                <i class="bi bi-question-circle"></i>
-                            </button>
-                            <button class="btn btn-sm btn-outline-light me-1" data-action="clear" title="Clear Messages">
-                                <i class="bi bi-trash"></i>
-                            </button>
-                            <button class="btn btn-sm btn-outline-light" data-action="minimize" title="Minimize">
-                                <i class="bi bi-dash-lg"></i>
-                            </button>
-                        </div>
-                    </div>
+                <!-- Chat Header Component -->
+                <chat-header 
+                    title="SecureBank Support"
+                    status="online"
+                    show-help
+                    show-clear
+                    show-minimize>
+                </chat-header>
+
+                <!-- Chat Messages Component -->
+                <chat-messages></chat-messages>
+
+                <!-- Prompt Input Component (replacing old input) -->
+                <div class="chitchat-input-container">
+                    <prompt-input></prompt-input>
+                    <file-manager></file-manager>
                 </div>
 
-                <!-- Chat Messages Area -->
-                <div class="chitchat-messages" id="chitchat-messages">
-                    <div class="messages-container"></div>
-                    <div class="typing-indicator" style="display: none;">
-                        <div class="typing-animation">
-                            <span></span>
-                            <span></span>
-                            <span></span>
-                        </div>
-                        <small class="text-muted ms-2">Support is typing...</small>
-                    </div>
-                </div>
-
-                <!-- Chat Input Area -->
-                <div class="chitchat-input">
-                    <div class="input-group">
-                        ${this.options.enableEmoji ? `
-                        <button class="btn btn-outline-secondary" type="button" data-action="emoji">
-                            <i class="bi bi-emoji-smile"></i>
-                        </button>
-                        ` : ''}
-                        ${this.options.enableFileUpload ? `
-                        <button class="btn btn-outline-secondary" type="button" data-action="attach">
-                            <i class="bi bi-paperclip"></i>
-                        </button>
-                        ` : ''}
-                        <input type="text" class="form-control" placeholder="Type your message..." 
-                               id="chitchat-input" autocomplete="off">
-                        <button class="btn btn-primary" type="button" data-action="send">
-                            <i class="bi bi-send-fill"></i>
-                        </button>
-                    </div>
-                    <div class="input-suggestions" style="display: none;"></div>
-                </div>
-
-                <!-- File Upload Modal -->
-                ${this.options.enableFileUpload ? `
-                <div class="file-upload-area" style="display: none;">
-                    <div class="upload-zone">
-                        <i class="bi bi-cloud-upload fs-1 text-muted"></i>
-                        <p class="text-muted">Drop files here or click to upload</p>
-                        <input type="file" id="file-input" multiple accept="image/*,.pdf,.doc,.docx">
-                    </div>
-                </div>
-                ` : ''}
+                <!-- Chat Resizer Component -->
+                <chat-resizer direction="both"></chat-resizer>
             </div>
         `;
     }
@@ -368,54 +324,15 @@ class ChitChatComponent extends HTMLElement {
     }
 
     setupEventListeners() {
-        const input = this.querySelector('#chitchat-input');
-        const sendBtn = this.querySelector('[data-action="send"]');
-        const attachBtn = this.querySelector('[data-action="attach"]');
-        const emojiBtn = this.querySelector('[data-action="emoji"]');
-        const fileInput = this.querySelector('#file-input');
+        // Listen to events from new components
+        this.addEventListener('header-action', this.handleHeaderAction.bind(this));
+        this.addEventListener('message-send', this.handleMessageSend.bind(this));
+        this.addEventListener('file-added', this.handleFileAdded.bind(this));
+        this.addEventListener('file-removed', this.handleFileRemoved.bind(this));
+        this.addEventListener('chat-resized', this.handleChatResized.bind(this));
+        this.addEventListener('quick-reply-selected', this.handleQuickReplySelected.bind(this));
 
-        // Send message on Enter or button click
-        if (input) {
-            input.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    this.sendMessage();
-                }
-            });
-
-            // Auto-resize input and show typing indicator
-            input.addEventListener('input', () => {
-                this.handleInputChange();
-            });
-        }
-
-        if (sendBtn) {
-            sendBtn.addEventListener('click', () => this.sendMessage());
-        }
-
-        // File attachment
-        if (attachBtn) {
-            attachBtn.addEventListener('click', () => this.toggleFileUpload());
-        }
-        
-        if (fileInput) {
-            fileInput.addEventListener('change', (e) => this.handleFileUpload(e));
-        }
-
-        // Emoji picker (placeholder)
-        if (emojiBtn) {
-            emojiBtn.addEventListener('click', () => this.toggleEmojiPicker());
-        }
-
-        // Header actions
-        this.addEventListener('click', (e) => {
-            const action = e.target.closest('[data-action]')?.dataset.action;
-            if (action === 'minimize') this.minimize();
-            if (action === 'clear') this.clear();
-            if (action === 'help') this.showHelp();
-        });
-
-        // Quick reply handling
+        // Quick reply handling (backward compatibility)
         this.addEventListener('click', (e) => {
             if (e.target.classList.contains('quick-reply-btn')) {
                 this.sendMessage(e.target.textContent.trim());
@@ -424,6 +341,56 @@ class ChitChatComponent extends HTMLElement {
 
         // Custom resize functionality
         this.setupCustomResize();
+    }
+    
+    handleHeaderAction(e) {
+        const { action } = e.detail;
+        switch (action) {
+            case 'minimize':
+                this.minimize();
+                break;
+            case 'clear':
+                this.clear();
+                break;
+            case 'help':
+                this.showHelp();
+                break;
+            case 'close':
+                this.close();
+                break;
+        }
+    }
+    
+    handleMessageSend(e) {
+        const { value } = e.detail;
+        this.sendMessage(value);
+    }
+    
+    handleFileAdded(e) {
+        // Handle file addition from file-manager
+        const { file } = e.detail;
+        this.addMessage({
+            type: 'user',
+            content: `📎 File attached: ${file.name}`,
+            timestamp: new Date()
+        });
+    }
+    
+    handleFileRemoved(e) {
+        // Handle file removal
+        console.log('File removed:', e.detail);
+    }
+    
+    handleChatResized(e) {
+        // Handle resize events from chat-resizer
+        const { width, height } = e.detail;
+        this.otlc.debug('Chat resized', { width, height });
+    }
+    
+    handleQuickReplySelected(e) {
+        // Handle quick reply selection from chat-messages
+        const { reply } = e.detail;
+        this.handleQuickReply(reply);
     }
 
     setupCustomResize() {
@@ -695,10 +662,10 @@ class ChitChatComponent extends HTMLElement {
                 return null;
             }
             
-            // Ensure DOM is ready
-            const messagesContainer = this.querySelector('.messages-container');
-            if (!messagesContainer) {
-                this.otlc.warn('Messages container not found, queuing message', { type: messageData.type });
+            // Use the new chat-messages component
+            const chatMessages = this.querySelector('chat-messages');
+            if (!chatMessages) {
+                this.otlc.warn('Chat messages component not found, queuing message', { type: messageData.type });
                 this.messageQueue.push(messageData);
                 return null;
             }
@@ -713,12 +680,11 @@ class ChitChatComponent extends HTMLElement {
                 this.messages = this.messages.slice(-this.options.maxMessages);
             }
 
-            this.renderMessage(message);
+            // Delegate to chat-messages component
+            chatMessages.dispatchEvent(new CustomEvent('add-message', {
+                detail: message
+            }));
             
-            if (this.options.autoScroll) {
-                this.scrollToBottom();
-            }
-
             // Emit message added event
             this.emit('message-added', { message });
             
@@ -994,26 +960,25 @@ class ChitChatComponent extends HTMLElement {
     }
 
     showTypingIndicator() {
-        const indicator = this.querySelector('.typing-indicator');
-        if (indicator) {
-            indicator.style.display = 'flex';
-            this.scrollToBottom();
+        const chatMessages = this.querySelector('chat-messages');
+        if (chatMessages) {
+            chatMessages.dispatchEvent(new CustomEvent('show-typing'));
             this.isTyping = true;
         }
     }
 
     hideTypingIndicator() {
-        const indicator = this.querySelector('.typing-indicator');
-        if (indicator) {
-            indicator.style.display = 'none';
+        const chatMessages = this.querySelector('chat-messages');
+        if (chatMessages) {
+            chatMessages.dispatchEvent(new CustomEvent('hide-typing'));
             this.isTyping = false;
         }
     }
 
     scrollToBottom() {
-        const messagesArea = this.querySelector('.chitchat-messages');
-        if (messagesArea) {
-            messagesArea.scrollTop = messagesArea.scrollHeight;
+        const chatMessages = this.querySelector('chat-messages');
+        if (chatMessages) {
+            chatMessages.scrollToBottom();
         }
     }
 
@@ -1146,9 +1111,11 @@ class ChitChatComponent extends HTMLElement {
     // Public API methods
     clear() {
         this.messages = [];
-        const messagesContainer = this.querySelector('.messages-container');
-        if (messagesContainer) {
-            messagesContainer.innerHTML = '';
+        
+        // Clear via chat-messages component
+        const chatMessages = this.querySelector('chat-messages');
+        if (chatMessages) {
+            chatMessages.dispatchEvent(new CustomEvent('clear-messages'));
         }
         
         this.otlc.info('Chat messages cleared');
