@@ -7,6 +7,7 @@ class OpenAIClient {
         this.baseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
         this.apiKey = apiKey;
         this.toolsRegistry = toolsRegistry;
+        this.policyHeaders = {}; // Store policy headers for requests
     }
 
     /**
@@ -15,6 +16,15 @@ class OpenAIClient {
      */
     updateToolsFromRegistry(registry) {
         this.toolsRegistry = registry;
+    }
+
+    /**
+     * Set policy headers for requests
+     * @param {Object} headers - Policy headers to include in requests
+     */
+    setPolicyHeaders(headers) {
+        this.policyHeaders = headers || {};
+        console.log('[OpenAIClient] Policy headers updated:', this.policyHeaders);
     }
 
     /**
@@ -48,12 +58,17 @@ class OpenAIClient {
             console.log('[OpenAIClient] Adding tools to request:', tools);
         }
 
+        const headers = {
+            'Content-Type': 'application/json',
+            ...(this.apiKey && { 'Authorization': `Bearer ${this.apiKey}` }),
+            ...this.policyHeaders
+        };
+
+        console.log('[OpenAIClient] Request headers:', headers);
+
         const response = await fetch(`${this.baseUrl}/chat/completions`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                ...(this.apiKey && { 'Authorization': `Bearer ${this.apiKey}` })
-            },
+            headers: headers,
             body: JSON.stringify(requestBody)
         });
 
@@ -89,12 +104,17 @@ class OpenAIClient {
             console.log('[OpenAIClient] Adding tools to request:', tools);
         }
 
+        const headers = {
+            'Content-Type': 'application/json',
+            ...(this.apiKey && { 'Authorization': `Bearer ${this.apiKey}` }),
+            ...this.policyHeaders
+        };
+
+        console.log('[OpenAIClient] Streaming request headers:', headers);
+
         const response = await fetch(`${this.baseUrl}/chat/completions`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                ...(this.apiKey && { 'Authorization': `Bearer ${this.apiKey}` })
-            },
+            headers: headers,
             body: JSON.stringify(requestBody)
         });
 
@@ -214,7 +234,8 @@ class OpenAIClient {
     async getModels() {
         const response = await fetch(`${this.baseUrl}/models`, {
             headers: {
-                ...(this.apiKey && { 'Authorization': `Bearer ${this.apiKey}` })
+                ...(this.apiKey && { 'Authorization': `Bearer ${this.apiKey}` }),
+                ...this.policyHeaders
             }
         });
 

@@ -10,7 +10,7 @@ import time
 import logging
 import asyncio
 from datetime import datetime
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from typing import AsyncGenerator
 
@@ -26,6 +26,8 @@ from core.models import (
 )
 from core.llm import create_llm
 from core.utils import parse_tool_call, estimate_tokens
+from dependencies.policies import policy_dependency
+from services.policy import OperationToolingPolicy
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -39,12 +41,15 @@ router = APIRouter(tags=["chat"])
 
 
 @router.post("/chat/completions")
-async def create_chat_completion(request: ChatCompletionRequest):
+async def create_chat_completion(
+    request: ChatCompletionRequest,
+    operation_policy: OperationToolingPolicy = Depends(policy_dependency)
+):
     """Create a chat completion using AWS Bedrock with optional streaming."""
     
     if request.stream:
         return StreamingResponse(
-            stream_chat_completion(request),
+            stream_chat_completion(request, operation_policy),
             media_type="text/plain",
             headers={
                 "Cache-Control": "no-cache",
@@ -54,10 +59,13 @@ async def create_chat_completion(request: ChatCompletionRequest):
         )
     else:
         # Collect streaming response into a single response
-        return await collect_streaming_response(request)
+        return await collect_streaming_response(request, operation_policy)
 
 
-async def stream_chat_completion(request: ChatCompletionRequest) -> AsyncGenerator[str, None]:
+async def stream_chat_completion(
+    request: ChatCompletionRequest, 
+    operation_policy: OperationToolingPolicy
+) -> AsyncGenerator[str, None]:
     """Stream chat completion tokens via Server-Sent Events."""
     
     try:
@@ -194,7 +202,10 @@ async def stream_chat_completion(request: ChatCompletionRequest) -> AsyncGenerat
         yield "data: [DONE]\n\n"
 
 
-async def collect_streaming_response(request: ChatCompletionRequest) -> ChatCompletionResponse:
+async def collect_streaming_response(
+    request: ChatCompletionRequest, 
+    operation_policy: OperationToolingPolicy
+) -> ChatCompletionResponse:
     """Collect streaming response into a single non-streaming response."""
     
     try:
@@ -204,7 +215,7 @@ async def collect_streaming_response(request: ChatCompletionRequest) -> ChatComp
         finish_reason = "stop"
         
         # Collect all streaming chunks
-        async for chunk_data in stream_chat_completion(request):
+        async for chunk_data in stream_chat_completion(request, operation_policy):
             if chunk_data.startswith("data: "):
                 data = chunk_data[6:].strip()
                 

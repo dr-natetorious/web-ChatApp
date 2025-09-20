@@ -455,236 +455,476 @@ class ModelSelector extends HTMLElement {
 class OptionsPanel extends HTMLElement {
     constructor() {
         super();
-        this.options = {
-            useProjectContext: false,
-            useArtifacts: false,
-            useAnalysis: false,
-            useLatex: false
+        this.availableOptions = {
+            databricks: { enabled: false, spaces: [] },
+            snowflake: { enabled: false, clusters: [], databases: [] },
+            llm: { enabled: false, knowledgeBases: [] }
         };
-        this.eventListeners = [];
-        this.isOpen = false;
+        this.selectedOptions = {
+            databricks: { enabled: false, spaces: [] },
+            snowflake: { enabled: false, clusters: [], databases: [] },
+            llm: { enabled: false, knowledgeBases: [] }
+        };
     }
-    
+
     static get observedAttributes() {
-        return ['data-options'];
+        return ['databricks-spaces', 'snowflake-clusters', 'llm-knowledge-bases'];
     }
-    
-    attributeChangedCallback(name, oldValue, newValue) {
-        if (name === 'data-options' && newValue) {
-            try {
-                const options = JSON.parse(newValue);
-                Object.assign(this.options, options);
-                this.updateToggles();
-            } catch (error) {
-                console.error('Failed to parse options:', error);
-            }
-        }
-    }
-    
+
     connectedCallback() {
+        this.parseAttributes();
         this.render();
         this.setupEvents();
     }
-    
-    disconnectedCallback() {
-        this.cleanup();
+
+    attributeChangedCallback(name, oldValue, newValue) {
+        if (oldValue !== newValue) {
+            this.parseAttributes();
+            if (this.isConnected) {
+                this.render();
+            }
+        }
+    }
+
+    parseAttributes() {
+        // Parse databricks-spaces
+        if (this.hasAttribute('databricks-spaces')) {
+            try {
+                const rawValue = this.getAttribute('databricks-spaces');
+                if (rawValue && rawValue.trim()) {
+                    const decodedValue = rawValue.replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+                    this.availableOptions.databricks.spaces = JSON.parse(decodedValue);
+                    this.availableOptions.databricks.enabled = true;
+                    console.log('[OptionsPanel] Parsed databricks-spaces:', this.availableOptions.databricks.spaces);
+                }
+            } catch (e) {
+                console.warn('[OptionsPanel] Invalid databricks-spaces JSON:', e);
+                this.availableOptions.databricks.spaces = [];
+            }
+        }
+
+        // Parse snowflake-clusters
+        if (this.hasAttribute('snowflake-clusters')) {
+            try {
+                const rawValue = this.getAttribute('snowflake-clusters');
+                if (rawValue && rawValue.trim()) {
+                    const decodedValue = rawValue.replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+                    this.availableOptions.snowflake.clusters = JSON.parse(decodedValue);
+                    this.availableOptions.snowflake.enabled = true;
+                    console.log('[OptionsPanel] Parsed snowflake-clusters:', this.availableOptions.snowflake.clusters);
+                }
+            } catch (e) {
+                console.warn('[OptionsPanel] Invalid snowflake-clusters JSON:', e);
+                this.availableOptions.snowflake.clusters = [];
+            }
+        }
+
+        // Parse llm-knowledge-bases
+        if (this.hasAttribute('llm-knowledge-bases')) {
+            try {
+                const rawValue = this.getAttribute('llm-knowledge-bases');
+                if (rawValue && rawValue.trim()) {
+                    const decodedValue = rawValue.replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+                    this.availableOptions.llm.knowledgeBases = JSON.parse(decodedValue);
+                    this.availableOptions.llm.enabled = true;
+                    console.log('[OptionsPanel] Parsed llm-knowledge-bases:', this.availableOptions.llm.knowledgeBases);
+                }
+            } catch (e) {
+                console.warn('[OptionsPanel] Invalid llm-knowledge-bases JSON:', e);
+                this.availableOptions.llm.knowledgeBases = [];
+            }
+        }
+
+        // Auto-enable services if they have resources available
+        Object.keys(this.availableOptions).forEach(service => {
+            const serviceConfig = this.availableOptions[service];
+            const hasResources = Object.values(serviceConfig).some(value => 
+                Array.isArray(value) && value.length > 0 || 
+                (typeof value === 'object' && value !== null && Object.keys(value).length > 0)
+            );
+            
+            if (hasResources && !this.selectedOptions[service].enabled) {
+                this.selectedOptions[service].enabled = true;
+                console.log(`[OptionsPanel] Auto-enabled ${service} service`);
+            }
+        });
     }
     
     render() {
         this.innerHTML = `
             <div class="dropdown">
-                <button class="btn-options btn-icon dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Data Sources">
+                <button class="btn-options btn-icon dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="AI Services Configuration">
                     ⚙️
                 </button>
                 
-                <ul class="dropdown-menu dropdown-menu-end">
-                    <!-- Databricks Genie -->
-                    <li>
-                        <h6 class="dropdown-header">
-                            <i class="bi bi-database"></i> Databricks Genie
-                        </h6>
-                    </li>
-                    <li><a class="dropdown-item" href="#" data-source="databricks" data-space="analytics-prod">
-                        <span class="fw-medium">Analytics Production</span>
-                        <small class="text-muted d-block">Main analytics workspace</small>
-                    </a></li>
-                    <li><a class="dropdown-item" href="#" data-source="databricks" data-space="ml-experiments">
-                        <span class="fw-medium">ML Experiments</span>
-                        <small class="text-muted d-block">Machine learning sandbox</small>
-                    </a></li>
-                    <li><a class="dropdown-item" href="#" data-source="databricks" data-space="data-engineering">
-                        <span class="fw-medium">Data Engineering</span>
-                        <small class="text-muted d-block">ETL and data pipelines</small>
-                    </a></li>
+                <ul class="dropdown-menu dropdown-menu-end policy-options-menu">
+                    ${this.renderDatabricksSection()}
+                    ${this.renderSnowflakeSection()}
+                    ${this.renderLLMSection()}
                     
-                    <li><hr class="dropdown-divider"></li>
-                    
-                    <!-- Snowflake Cortex -->
-                    <li>
-                        <h6 class="dropdown-header">
-                            <i class="bi bi-snow"></i> Snowflake Cortex
-                        </h6>
-                    </li>
-                    <li><a class="dropdown-item" href="#" data-source="snowflake">
-                        <span class="fw-medium">Cortex Intelligence</span>
-                        <small class="text-muted d-block">AI-powered analytics</small>
-                    </a></li>
-                    
-                    <li><hr class="dropdown-divider"></li>
-                    
-                    <!-- LLM Suite -->
-                    <li>
-                        <h6 class="dropdown-header">
-                            <i class="bi bi-brain"></i> LLM Suite
-                        </h6>
-                    </li>
-                    <li><a class="dropdown-item" href="#" data-source="llm" data-kb="company-docs">
-                        <span class="fw-medium">Company Documentation</span>
-                        <small class="text-muted d-block">Internal knowledge base</small>
-                    </a></li>
-                    <li><a class="dropdown-item" href="#" data-source="llm" data-kb="technical-specs">
-                        <span class="fw-medium">Technical Specifications</span>
-                        <small class="text-muted d-block">API and system docs</small>
-                    </a></li>
-                    <li><a class="dropdown-item" href="#" data-source="llm" data-kb="customer-data">
-                        <span class="fw-medium">Customer Analytics</span>
-                        <small class="text-muted d-block">Customer insights and data</small>
-                    </a></li>
-                    
-                    <li><hr class="dropdown-divider"></li>
-                    
-                    <!-- Project Context Toggle -->
-                    <li class="px-3 py-2">
-                        <div class="form-check form-switch">
-                            <input class="form-check-input" type="checkbox" id="projectContextToggle">
-                            <label class="form-check-label" for="projectContextToggle">
-                                Include Project Context
-                            </label>
-                        </div>
-                    </li>
                 </ul>
             </div>
         `;
     }
     
+    renderDatabricksSection() {
+        const spacesCount = Array.isArray(this.availableOptions.databricks.spaces) 
+            ? this.availableOptions.databricks.spaces.length 
+            : Object.keys(this.availableOptions.databricks.spaces).length;
+            
+        if (!spacesCount) {
+            return '';
+        }
+        
+        return `
+            <!-- Databricks Genie -->
+            <li>
+                <div class="service-header">
+                    <span>
+                        <i class="bi bi-database"></i> Databricks Genie
+                    </span>
+                </div>
+            </li>
+            ${Array.isArray(this.availableOptions.databricks.spaces) 
+                ? this.availableOptions.databricks.spaces.map(space => `
+                    <li class="px-3">
+                        <div class="service-item">
+                            <label class="service-toggle">
+                                <input class="databricks-space" type="checkbox" 
+                                       id="space-${space}" value="${space}" checked>
+                                <span class="slider"></span>
+                            </label>
+                            <span>${space}</span>
+                        </div>
+                    </li>
+                `).join('')
+                : Object.entries(this.availableOptions.databricks.spaces).map(([displayName, spaceId]) => `
+                    <li class="px-3">
+                        <div class="service-item">
+                            <label class="service-toggle">
+                                <input class="databricks-space" type="checkbox" 
+                                       id="space-${spaceId}" value="${spaceId}" checked>
+                                <span class="slider"></span>
+                            </label>
+                            <span>${displayName}</span>
+                        </div>
+                    </li>
+                `).join('')
+            }
+        `;
+    }
+    
+    renderSnowflakeSection() {
+        const clustersCount = Array.isArray(this.availableOptions.snowflake.clusters)
+            ? this.availableOptions.snowflake.clusters.length
+            : Object.keys(this.availableOptions.snowflake.clusters || {}).length;
+        const databasesCount = Array.isArray(this.availableOptions.snowflake.databases)
+            ? this.availableOptions.snowflake.databases.length
+            : Object.keys(this.availableOptions.snowflake.databases || {}).length;
+            
+        if (!clustersCount && !databasesCount) {
+            return '';
+        }
+        
+        return `
+            <li><hr class="dropdown-divider"></li>
+            
+            <!-- Snowflake Cortex -->
+            <li>
+                <div class="service-header">
+                    <span>
+                        <i class="bi bi-snow"></i> Snowflake Cortex
+                    </span>
+                </div>
+            </li>
+            
+            ${this.availableOptions.snowflake.clusters.length ? 
+                (Array.isArray(this.availableOptions.snowflake.clusters)
+                    ? this.availableOptions.snowflake.clusters.map(cluster => `
+                        <li class="px-3">
+                            <div class="service-item">
+                                <label class="service-toggle">
+                                    <input class="snowflake-cluster" type="checkbox" 
+                                           id="cluster-${cluster}" value="${cluster}" checked>
+                                    <span class="slider"></span>
+                                </label>
+                                <span>${cluster}</span>
+                            </div>
+                        </li>
+                    `).join('')
+                    : Object.entries(this.availableOptions.snowflake.clusters).map(([displayName, clusterId]) => `
+                        <li class="px-3">
+                            <div class="service-item">
+                                <label class="service-toggle">
+                                    <input class="snowflake-cluster" type="checkbox" 
+                                           id="cluster-${clusterId}" value="${clusterId}" checked>
+                                    <span class="slider"></span>
+                                </label>
+                                <span>${displayName}</span>
+                            </div>
+                        </li>
+                    `).join('')
+                ) : ''
+            }
+            
+            ${this.availableOptions.snowflake.databases.length ? 
+                this.availableOptions.snowflake.databases.map(database => `
+                    <li class="px-3">
+                        <div class="service-item">
+                            <label class="service-toggle">
+                                <input class="snowflake-database" type="checkbox" 
+                                       id="database-${database}" value="${database}" checked>
+                                <span class="slider"></span>
+                            </label>
+                            <span>${database}</span>
+                        </div>
+                    </li>
+                `).join('') : ''
+            }
+        `;
+    }
+    
+    renderLLMSection() {
+        const kbCount = Array.isArray(this.availableOptions.llm.knowledgeBases)
+            ? this.availableOptions.llm.knowledgeBases.length
+            : Object.keys(this.availableOptions.llm.knowledgeBases || {}).length;
+            
+        if (!kbCount) {
+            return '';
+        }
+        
+        return `
+            <li><hr class="dropdown-divider"></li>
+            
+            <!-- LLM Knowledge Bases -->
+            <li>
+                <div class="service-header">
+                    <span>
+                        <i class="bi bi-brain"></i> Knowledge Bases
+                    </span>
+                </div>
+            </li>
+            ${Array.isArray(this.availableOptions.llm.knowledgeBases)
+                ? this.availableOptions.llm.knowledgeBases.map(kb => `
+                    <li class="px-3">
+                        <div class="service-item">
+                            <label class="service-toggle">
+                                <input class="llm-kb" type="checkbox" 
+                                       id="kb-${kb}" value="${kb}" checked>
+                                <span class="slider"></span>
+                            </label>
+                            <span>${kb}</span>
+                        </div>
+                    </li>
+                `).join('')
+                : Object.entries(this.availableOptions.llm.knowledgeBases).map(([displayName, kbId]) => `
+                    <li class="px-3">
+                        <div class="service-item">
+                            <label class="service-toggle">
+                                <input class="llm-kb" type="checkbox" 
+                                       id="kb-${kbId}" value="${kbId}" checked>
+                                <span class="slider"></span>
+                            </label>
+                            <span>${displayName}</span>
+                        </div>
+                    </li>
+                `).join('')
+            }
+        `;
+    }
+    
     setupEvents() {
-        // Setup data source selection
-        const dropdownItems = this.querySelectorAll('.dropdown-item[data-source]');
-        dropdownItems.forEach(item => {
-            this.addEventListenerTracked(item, 'click', (e) => {
-                e.preventDefault();
-                this.handleDataSourceSelect(e.target.closest('.dropdown-item'));
+        // Prevent dropdown from closing when clicking inside
+        const dropdown = this.querySelector('.dropdown-menu');
+        if (dropdown) {
+            this.addEventListenerTracked(dropdown, 'click', (e) => {
+                e.stopPropagation();
+            });
+        }
+
+        // Close dropdown when clicking outside
+        this.addEventListenerTracked(document, 'click', (e) => {
+            const dropdownButton = this.querySelector('.btn-options');
+            const dropdownMenu = this.querySelector('.dropdown-menu');
+            
+            if (dropdownButton && dropdownMenu && 
+                !this.contains(e.target) && 
+                dropdownMenu.classList.contains('show')) {
+                // Close the dropdown
+                dropdownButton.click();
+            }
+        });
+
+        // Databricks spaces
+        this.querySelectorAll('.databricks-space').forEach(checkbox => {
+            this.addEventListenerTracked(checkbox, 'change', (e) => {
+                e.stopPropagation(); // Prevent event bubbling
+                const space = e.target.value;
+                if (e.target.checked) {
+                    if (!this.selectedOptions.databricks.spaces.includes(space)) {
+                        this.selectedOptions.databricks.spaces.push(space);
+                    }
+                } else {
+                    this.selectedOptions.databricks.spaces = 
+                        this.selectedOptions.databricks.spaces.filter(s => s !== space);
+                }
+                this.notifyPolicyChange();
             });
         });
         
-        // Setup project context toggle
-        const contextToggle = this.querySelector('#projectContextToggle');
-        if (contextToggle) {
-            this.addEventListenerTracked(contextToggle, 'change', (e) => {
-                this.options.useProjectContext = e.target.checked;
-                this.dispatchEvent(new CustomEvent('option-changed', {
-                    bubbles: true,
-                    detail: { 
-                        option: 'useProjectContext', 
-                        value: e.target.checked 
+        // Snowflake clusters
+        this.querySelectorAll('.snowflake-cluster').forEach(checkbox => {
+            this.addEventListenerTracked(checkbox, 'change', (e) => {
+                e.stopPropagation(); // Prevent event bubbling
+                const cluster = e.target.value;
+                if (e.target.checked) {
+                    if (!this.selectedOptions.snowflake.clusters.includes(cluster)) {
+                        this.selectedOptions.snowflake.clusters.push(cluster);
                     }
-                }));
+                } else {
+                    this.selectedOptions.snowflake.clusters = 
+                        this.selectedOptions.snowflake.clusters.filter(c => c !== cluster);
+                }
+                this.notifyPolicyChange();
             });
+        });
+        
+        // Snowflake databases
+        this.querySelectorAll('.snowflake-database').forEach(checkbox => {
+            this.addEventListenerTracked(checkbox, 'change', (e) => {
+                e.stopPropagation(); // Prevent event bubbling
+                const database = e.target.value;
+                if (e.target.checked) {
+                    if (!this.selectedOptions.snowflake.databases.includes(database)) {
+                        this.selectedOptions.snowflake.databases.push(database);
+                    }
+                } else {
+                    this.selectedOptions.snowflake.databases = 
+                        this.selectedOptions.snowflake.databases.filter(d => d !== database);
+                }
+                this.notifyPolicyChange();
+            });
+        });
+        
+        // LLM knowledge bases
+        this.querySelectorAll('.llm-kb').forEach(checkbox => {
+            this.addEventListenerTracked(checkbox, 'change', (e) => {
+                e.stopPropagation(); // Prevent event bubbling
+                const kb = e.target.value;
+                if (e.target.checked) {
+                    if (!this.selectedOptions.llm.knowledgeBases.includes(kb)) {
+                        this.selectedOptions.llm.knowledgeBases.push(kb);
+                    }
+                } else {
+                    this.selectedOptions.llm.knowledgeBases = 
+                        this.selectedOptions.llm.knowledgeBases.filter(k => k !== kb);
+                }
+                this.notifyPolicyChange();
+            });
+        });
+    }
+    
+    updateSubOptions(service, enabled) {
+        if (!enabled) {
+            // Clear all sub-options when service is disabled
+            if (service === 'databricks') {
+                this.selectedOptions.databricks.spaces = [];
+            } else if (service === 'snowflake') {
+                this.selectedOptions.snowflake.clusters = [];
+                this.selectedOptions.snowflake.databases = [];
+            } else if (service === 'llm') {
+                this.selectedOptions.llm.knowledgeBases = [];
+            }
+        } else {
+            // When enabling, start with all available options selected
+            if (service === 'databricks') {
+                const spaces = Array.isArray(this.availableOptions.databricks.spaces) 
+                    ? [...this.availableOptions.databricks.spaces]
+                    : Object.values(this.availableOptions.databricks.spaces);
+                this.selectedOptions.databricks.spaces = spaces;
+            } else if (service === 'snowflake') {
+                const clusters = Array.isArray(this.availableOptions.snowflake.clusters)
+                    ? [...this.availableOptions.snowflake.clusters] 
+                    : Object.values(this.availableOptions.snowflake.clusters);
+                const databases = Array.isArray(this.availableOptions.snowflake.databases)
+                    ? [...this.availableOptions.snowflake.databases]
+                    : Object.values(this.availableOptions.snowflake.databases);
+                this.selectedOptions.snowflake.clusters = clusters;
+                this.selectedOptions.snowflake.databases = databases;
+            } else if (service === 'llm') {
+                const knowledgeBases = Array.isArray(this.availableOptions.llm.knowledgeBases)
+                    ? [...this.availableOptions.llm.knowledgeBases]
+                    : Object.values(this.availableOptions.llm.knowledgeBases);
+                this.selectedOptions.llm.knowledgeBases = knowledgeBases;
+            }
         }
     }
     
-    handleDataSourceSelect(item) {
-        const source = item.dataset.source;
-        const space = item.dataset.space;
-        const kb = item.dataset.kb;
-        
-        let selection = { source };
-        if (space) selection.space = space;
-        if (kb) selection.knowledgeBase = kb;
-        
-        // Update UI to show selection
-        this.updateSelectedSource(item);
-        
-        // Dispatch event
-        this.dispatchEvent(new CustomEvent('data-source-changed', {
+    notifyPolicyChange() {
+        this.dispatchEvent(new CustomEvent('policy-changed', {
             bubbles: true,
-            detail: selection
+            detail: { 
+                policy: this.generateOperationPolicy()
+            }
         }));
     }
     
-    updateSelectedSource(selectedItem) {
-        // Remove previous selections
-        this.querySelectorAll('.dropdown-item').forEach(item => {
-            item.classList.remove('active');
-        });
+    generateOperationPolicy() {
+        const policy = {};
         
-        // Mark current selection
-        selectedItem.classList.add('active');
-        
-        // Update button icon based on source
-        const button = this.querySelector('.btn-options');
-        const source = selectedItem.dataset.source;
-        
-        switch(source) {
-            case 'databricks':
-                button.innerHTML = '🔥';
-                button.title = `Databricks: ${selectedItem.querySelector('.fw-medium').textContent}`;
-                break;
-            case 'snowflake':
-                button.innerHTML = '❄️';
-                button.title = 'Snowflake Cortex';
-                break;
-            case 'llm':
-                button.innerHTML = '🧠';
-                button.title = `LLM Suite: ${selectedItem.querySelector('.fw-medium').textContent}`;
-                break;
-            default:
-                button.innerHTML = '🔌';
-                button.title = 'Data Sources';
+        if (this.selectedOptions.databricks.enabled && this.selectedOptions.databricks.spaces.length) {
+            policy.databricks = {
+                enabled: true,
+                spaces: this.selectedOptions.databricks.spaces
+            };
         }
+        
+        if (this.selectedOptions.snowflake.enabled && 
+            (this.selectedOptions.snowflake.clusters.length || this.selectedOptions.snowflake.databases.length)) {
+            policy.snowflake = {
+                enabled: true,
+                clusters: this.selectedOptions.snowflake.clusters,
+                databases: this.selectedOptions.snowflake.databases
+            };
+        }
+        
+        if (this.selectedOptions.llm.enabled && this.selectedOptions.llm.knowledgeBases.length) {
+            policy.llm = {
+                enabled: true,
+                knowledgeBases: this.selectedOptions.llm.knowledgeBases
+            };
+        }
+        
     }
-    
-    addEventListenerTracked(element, event, handler) {
-        element.addEventListener(event, handler);
-        this.eventListeners.push({ element, event, handler });
-    }
-    
-    cleanup() {
-        this.eventListeners.forEach(({ element, event, handler }) => {
-            element.removeEventListener(event, handler);
-        });
-        this.eventListeners = [];
-    }
-    
-    closePanel() {
-        const dropdown = this.querySelector('.options-dropdown');
-        this.isOpen = false;
-        dropdown.style.display = 'none';
-    }
-    
-    updateToggles() {
-        const toggles = {
-            'projectContextToggle': 'useProjectContext',
-            'artifactsToggle': 'useArtifacts',
-            'analysisToggle': 'useAnalysis',
-            'latexToggle': 'useLatex'
+
+    generatePolicy() {
+        const policy = {
+            databricks: {
+                enabled: this.selectedOptions.databricks.enabled,
+                token: this.selectedOptions.databricks.token,
+                spaces: this.selectedOptions.databricks.spaces
+            },
+            snowflake: {
+                enabled: this.selectedOptions.snowflake.enabled,
+                token: this.selectedOptions.snowflake.token,
+                clusters: this.selectedOptions.snowflake.clusters
+            },
+            llm: {
+                enabled: this.selectedOptions.llm.enabled,
+                knowledgeBases: this.selectedOptions.llm.knowledgeBases
+            }
         };
         
-        Object.entries(toggles).forEach(([id, property]) => {
-            const toggle = this.querySelector(`#${id}`);
-            if (toggle) {
-                toggle.checked = this.options[property];
-            }
-        });
+        return policy;
     }
-    
-    getOptions() {
-        return { ...this.options };
+
+    getSelectedOptions() {
+        return { ...this.selectedOptions };
     }
-    
-    setOptions(options) {
-        Object.assign(this.options, options);
-        this.updateToggles();
+
+    closePanel() {
+        this.isOpen = false;
+        this.querySelector('.options-dropdown').style.display = 'none';
     }
 }
 

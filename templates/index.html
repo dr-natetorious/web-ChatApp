@@ -366,7 +366,17 @@
     current-user='{"id": "user", "name": "John Doe", "avatar": null}'
     theme="light"
     enable-rich-messages="true"
-    auto-scroll="true">
+    auto-scroll="true"
+    databricks-spaces='{"Dev Workspace": "dev-workspace", "Analytics Prod": "analytics-prod", "ML Experiments": "ml-experiments", "Customer Insights": "customer-insights"}'
+    snowflake-clusters='{"Compute Small": "compute-wh-small", "Compute Medium": "compute-wh-medium", "Analytics Warehouse": "analytics-warehouse", "ML Cluster": "ml-cluster"}'
+    llm-knowledge-bases='{"Company Docs": "company-docs", "Technical Manuals": "technical-manuals", "Customer Support": "customer-support", "API Documentation": "api-documentation"}'>
+    <!-- 
+    To enable AI services, add available options as attributes:
+    
+    databricks-spaces='{"Production Analytics": "prod-analytics", "Dev Workspace": "dev-workspace"}'
+    snowflake-clusters='{"Production Warehouse": "prod-wh", "Dev Cluster": "dev-cluster"}'
+    llm-knowledge-bases='{"All Documentation": "all-docs", "Technical Specifications": "technical-specs"}'
+    -->
 </chitchat-component>
 
 <!-- Chat Toggle Button -->

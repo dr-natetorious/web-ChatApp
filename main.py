@@ -15,6 +15,9 @@ from api.otel import otel_router, cleanup as otel_cleanup
 # Import OpenAI router
 from api.openai import router as openai_router
 
+# Import Auth router
+from api.auth import router as auth_router
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -57,6 +60,9 @@ app.include_router(otel_router, prefix="/otel", tags=["OpenTelemetry"])
 
 # Include OpenAI-compatible API router
 app.include_router(openai_router, prefix='/v1', tags=["OpenAI API"])
+
+# Include Auth router
+app.include_router(auth_router, prefix='/auth', tags=["Authentication"])
 
 # Mount static files
 app.mount("/js", StaticFiles(directory="js"), name="javascript")

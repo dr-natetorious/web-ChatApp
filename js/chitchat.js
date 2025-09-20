@@ -36,6 +36,22 @@ class ChitChatComponent extends HTMLElement {
         // Initialize OpenAI client with our registry (endpoint will be set in initializeOptions)
         this.openaiClient = null;
         
+        // Initialize available options for policy-based UI
+        this.availableOptions = {
+            databricks: {
+                enabled: false,
+                spaces: []
+            },
+            snowflake: {
+                enabled: false,
+                clusters: []
+            },
+            llm: {
+                enabled: false,
+                knowledgeBases: []
+            }
+        };
+        
         // Detect screen type and set responsive defaults
         this.screenType = this.detectScreenType();
         this.responsiveDefaults = this.getResponsiveDefaults();
@@ -150,7 +166,10 @@ class ChitChatComponent extends HTMLElement {
             'max-messages',
             'auto-scroll',
             'show-timestamps',
-            'show-typing-indicator'
+            'show-typing-indicator',
+            'databricks-spaces',
+            'snowflake-clusters', 
+            'llm-knowledge-bases'
         ];
     }
 
@@ -161,6 +180,14 @@ class ChitChatComponent extends HTMLElement {
         this.createChatInterface();
         this.setupEventListeners();
         this.registerDefaultMessageTypes();
+        
+        // Initialize auth tokens
+        this.initializeAuthTokens();
+        
+        // Set initial policy headers after a brief delay to ensure options panel is ready
+        setTimeout(() => {
+            this.updatePolicyHeadersFromOptionsPanel();
+        }, 100);
         
         // Mark as initialized
         this.isInitialized = true;
@@ -259,6 +286,95 @@ class ChitChatComponent extends HTMLElement {
         }
     }
 
+    async initializeAuthTokens() {
+        try {
+            // For now, hardcode the tokens as requested
+            this.authTokens = {
+                databricks: "dapi123456789abcdef",
+                snowflake: "sf_token_xyz789"
+            };
+            console.log('[ChitChat] Auth tokens initialized:', Object.keys(this.authTokens));
+            
+            // TODO: Replace with actual auth endpoint call
+            // const response = await fetch('/auth/authenticate', {
+            //     method: 'POST', 
+            //     headers: { 'Content-Type': 'application/json' },
+            //     body: JSON.stringify({ username: 'user', password: 'pass' })
+            // });
+            // const authData = await response.json();
+            // this.authTokens = {
+            //     databricks: authData.policy.databricks?.token,
+            //     snowflake: authData.policy.snowflake?.token
+            // };
+        } catch (error) {
+            console.error('[ChitChat] Failed to initialize auth tokens:', error);
+            this.authTokens = {};
+        }
+    }
+
+    updatePolicyHeadersFromOptionsPanel() {
+        const optionsPanel = this.querySelector('options-panel');
+        if (optionsPanel) {
+            try {
+                const policy = optionsPanel.generatePolicy();
+                if (policy) {
+                    const policyHeaders = this.convertPolicyToHeaders(policy);
+                    console.log('[ChitChat] Setting initial policy headers:', policyHeaders);
+                    if (this.openaiClient) {
+                        this.openaiClient.setPolicyHeaders(policyHeaders);
+                    }
+                }
+            } catch (error) {
+                console.warn('[ChitChat] Failed to get initial policy from options panel:', error);
+            }
+        }
+    }
+
+    convertPolicyToHeaders(policy) {
+        const headers = {};
+        
+        if (policy.databricks?.enabled && this.authTokens?.databricks) {
+            headers['X-Enable-Databricks'] = `Token=${this.authTokens.databricks}`;
+            if (policy.databricks.spaces?.length > 0) {
+                headers['X-Enable-Databricks-Space'] = policy.databricks.spaces.join(',');
+            }
+        }
+        
+        if (policy.snowflake?.enabled && this.authTokens?.snowflake) {
+            // Snowflake requires account and user parameters
+            headers['X-Enable-Snowflake'] = `Token=${this.authTokens.snowflake}; Account=demo_account; User=demo_user`;
+            if (policy.snowflake.clusters?.length > 0) {
+                headers['X-Enable-Snowflake-Cluster'] = policy.snowflake.clusters.join(',');
+            }
+            if (policy.snowflake.databases?.length > 0) {
+                headers['X-Enable-Snowflake-Database'] = policy.snowflake.databases.join(',');
+            }
+        }
+        
+        if (policy.llm?.enabled) {
+            headers['X-Enable-LLM'] = 'Enabled=true';
+            if (policy.llm.knowledgeBases?.length > 0) {
+                headers['X-Enable-LLM-KnowledgeBase'] = policy.llm.knowledgeBases.join(',');
+            }
+        }
+        
+        console.log('[ChitChat] Generated policy headers:', headers);
+        return headers;
+    }
+
+    handlePolicyChanged(event) {
+        const policy = event.detail.policy;
+        console.log('[ChitChat] Policy changed:', policy);
+        
+        // Convert policy to headers
+        const policyHeaders = this.convertPolicyToHeaders(policy);
+        
+        // Update OpenAI client with policy headers
+        if (this.openaiClient) {
+            this.openaiClient.setPolicyHeaders(policyHeaders);
+        }
+    }
+
     init() {
         this.createChatInterface();
         this.setupEventListeners();
@@ -336,6 +452,18 @@ class ChitChatComponent extends HTMLElement {
                 <chat-resizer direction="both"></chat-resizer>
             </div>
         `;
+        
+        // Copy service attributes to options panel
+        const optionsPanel = this.querySelector('options-panel');
+        if (optionsPanel) {
+            ['databricks-spaces', 'snowflake-clusters', 'llm-knowledge-bases'].forEach(attr => {
+                const value = this.getAttribute(attr);
+                if (value) {
+                    console.log(`[ChitChat] Copying ${attr}:`, value);
+                    optionsPanel.setAttribute(attr, value);
+                }
+            });
+        }
     }
 
     applyResponsiveStyles() {
@@ -388,7 +516,8 @@ class ChitChatComponent extends HTMLElement {
         this.addEventListener('chat-resized', this.handleChatResized.bind(this));
         this.addEventListener('quick-reply-selected', this.handleQuickReplySelected.bind(this));
         this.addEventListener('option-changed', this.handleOptionChanged.bind(this));
-        this.addEventListener('data-source-changed', this.handleDataSourceChanged.bind(this));
+        this.addEventListener('policy-changed', this.handlePolicyChanged.bind(this));
+        this.addEventListener('data-source-changed', this.handleDataSourceChanged.bind(this)); // Backward compatibility
 
         // Setup control buttons
         this.setupControlButtons();
@@ -490,9 +619,33 @@ class ChitChatComponent extends HTMLElement {
         console.log(`[ChitChat] Option changed: ${property} = ${value}`);
     }
     
+    handlePolicyChanged(e) {
+        const policy = e.detail.policy;
+        console.log(`[ChitChat] Policy changed:`, policy);
+        
+        // Store the current policy for use in chat requests
+        this.currentPolicy = policy;
+        
+        // You can add additional logic here to handle policy changes
+        // For example, updating UI indicators or preparing headers for API calls
+    }
+
     handleDataSourceChanged(e) {
-        const { source, space, knowledgeBase } = e.detail;
-        console.log(`[ChitChat] Data source changed:`, { source, space, knowledgeBase });
+        // Handle the new policy-based approach
+        if (e.detail && e.detail.policy) {
+            const policy = e.detail.policy;
+            console.log(`[ChitChat] Policy changed:`, policy);
+            
+            // Store the current policy for use in chat requests
+            this.currentPolicy = policy;
+            
+            // You can add additional logic here to handle policy changes
+            // For example, updating UI indicators or preparing headers for API calls
+        } else {
+            // Backward compatibility with old data-source-changed format
+            const { source, space, knowledgeBase } = e.detail;
+            console.log(`[ChitChat] Data source changed (legacy):`, { source, space, knowledgeBase });
+        }
     }
     
     toggleDeepThinking() {
