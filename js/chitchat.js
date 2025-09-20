@@ -6,16 +6,14 @@
 
 console.log('[ChitChat] Main file loading...');
 
-// Test import
-import { testValue } from './test-module.js';
-console.log('[ChitChat] Test import result:', testValue);
-
 // Import component definitions
 import './messages.js';
 import './chitchat-components.js';
 import './prompt-components.js';
 
 console.log('[ChitChat] All imports completed');
+
+import { ChatToolsRegistry } from './chat-tools.js';
 
 class ChitChatComponent extends HTMLElement {
     constructor() {
@@ -31,6 +29,12 @@ class ChitChatComponent extends HTMLElement {
         this.isTyping = false;
         this.eventListeners = {};
         this.isInitialized = false;
+        
+        // Initialize chat tools registry - this component owns it
+        this.toolsRegistry = new ChatToolsRegistry();
+        
+        // Initialize OpenAI client with our registry
+        this.openaiClient = new OpenAIClient('/v1', null, this.toolsRegistry);
         
         // Detect screen type and set responsive defaults
         this.screenType = this.detectScreenType();
@@ -53,6 +57,13 @@ class ChitChatComponent extends HTMLElement {
         
         // Simple metrics tracking
         this.otlc.counter('chitchat.created');
+        
+        // Add API for external tool registration
+        this.registerTool = (name, definition) => {
+            this.toolsRegistry.registerTool(name, definition);
+            // Re-initialize OpenAI client handlers when tools change
+            this.openaiClient.updateToolsFromRegistry(this.toolsRegistry);
+        };
     }
 
     // Message components are now defined in messages.js
@@ -791,6 +802,44 @@ class ChitChatComponent extends HTMLElement {
         }
     }
 
+    /**
+     * Update an existing message by ID
+     * @param {string} messageId - The message ID to update
+     * @param {Object} updates - Properties to update
+     */
+    updateMessage(messageId, updates) {
+        try {
+            // Find the message in our array
+            const messageIndex = this.messages.findIndex(msg => msg.id === messageId);
+            if (messageIndex === -1) {
+                console.warn('Message not found for update:', messageId);
+                return false;
+            }
+            
+            // Update the message data
+            Object.assign(this.messages[messageIndex], updates);
+            
+            // Update the DOM element via chat-messages component
+            const chatMessages = this.querySelector('chat-messages');
+            if (chatMessages) {
+                chatMessages.dispatchEvent(new CustomEvent('update-message', {
+                    detail: { 
+                        messageId,
+                        message: this.messages[messageIndex],
+                        updates
+                    }
+                }));
+            }
+            
+            this.otlc.debug('Message updated', { id: messageId, updates });
+            return true;
+            
+        } catch (error) {
+            this.otlc.error('Failed to update message', { error: error.message, messageId });
+            return false;
+        }
+    }
+
     renderMessage(message) {
         try {
             const messagesContainer = this.querySelector('.messages-container');
@@ -1033,22 +1082,96 @@ class ChitChatComponent extends HTMLElement {
         }
     }
 
-    simulateResponse(userMessage) {
-        // Simple response simulation for demo
-        const responses = [
-            "Thank you for your message. How can I assist you today?",
-            "I understand your concern. Let me help you with that.",
-            "That's a great question! Here's what I can tell you...",
-            "I'd be happy to help you resolve this issue."
-        ];
-
-        const randomResponse = responses[Math.floor(Math.random() * responses.length)];
+    async simulateResponse(userMessage) {
+        // Use real OpenAI API instead of demo responses
+        this.showTypingIndicator();
         
-        this.addMessage({
-            type: 'text',
-            content: randomResponse,
-            sender: 'support'
-        });
+        try {
+            // Build conversation history
+            const messages = this.messages
+                .filter(msg => msg.type === 'text') // Only include text messages
+                .map(msg => ({
+                    role: msg.sender === this.options.currentUser.id ? 'user' : 'assistant',
+                    content: msg.content
+                }));
+            
+            // Add the current user message
+            messages.push({
+                role: 'user',
+                content: userMessage
+            });
+            
+            let currentMessageContent = '';
+            let currentMessageId = null;
+            
+            // Stream the response
+            await this.openaiClient.streamChatCompletion(
+                messages,
+                { 
+                    model: 'llama',
+                    temperature: 0.7,
+                    max_tokens: 1000
+                },
+                // Token callback - called for each token
+                (token, isComplete) => {
+                    if (token && !isComplete) {
+                        currentMessageContent += token;
+                        
+                        // Create or update the streaming message
+                        if (!currentMessageId) {
+                            const message = this.addMessage({
+                                type: 'text',
+                                content: currentMessageContent,
+                                sender: 'support',
+                                streaming: true
+                            });
+                            currentMessageId = message ? message.id : null;
+                        } else {
+                            // Update existing message
+                            this.updateMessage(currentMessageId, { 
+                                content: currentMessageContent,
+                                streaming: !isComplete
+                            });
+                        }
+                    }
+                    
+                    if (isComplete) {
+                        // Mark streaming as complete
+                        if (currentMessageId) {
+                            this.updateMessage(currentMessageId, { 
+                                streaming: false 
+                            });
+                        }
+                        this.hideTypingIndicator();
+                    }
+                },
+                // Command callback - called for JSON-RPC commands
+                (command) => {
+                    // Use the registry to dispatch commands
+                    const handler = this.toolsRegistry.getHandler(command.method);
+                    if (handler) {
+                        try {
+                            handler(command.params, this);
+                        } catch (error) {
+                            console.error(`Error executing command ${command.method}:`, error);
+                        }
+                    } else {
+                        console.warn(`No handler registered for method: ${command.method}`);
+                    }
+                }
+            );
+            
+        } catch (error) {
+            this.hideTypingIndicator();
+            console.error('OpenAI API error:', error);
+            
+            // Fallback to simple response on error
+            this.addMessage({
+                type: 'text',
+                content: 'I apologize, but I encountered an error. Please try again.',
+                sender: 'support'
+            });
+        }
     }
 
     showTypingIndicator() {

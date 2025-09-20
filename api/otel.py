@@ -122,7 +122,7 @@ class DynatraceForwarder:
 dynatrace = DynatraceForwarder()
 
 # Router instance
-otel_router = APIRouter(prefix="/otel", tags=["opentelemetry"])
+otel_router = APIRouter()
 
 def ensure_service_name(payload: Dict[Any, Any], resource_key: str) -> Dict[Any, Any]:
     """Ensure service.name attribute exists for proper Dynatrace mapping"""

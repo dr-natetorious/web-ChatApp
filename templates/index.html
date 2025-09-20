@@ -535,12 +535,15 @@
         const toggleButton = document.getElementById('chat-toggle');
         
         if (!isChatOpen) {
-            // Open chat with smooth animation using the component's show method
+            // Open chat with smooth animation
             chatContainer.style.transform = 'scale(0.3)';
             chatContainer.style.opacity = '0';
+            chatContainer.style.display = 'block';
             
-            // Use the component's show method which will trigger events
-            chatContainer.show();
+            // Use the component's show method if available, otherwise use display property
+            if (typeof chatContainer.show === 'function') {
+                chatContainer.show();
+            }
             
             // Animate the entrance
             chatContainer.offsetHeight; // Force reflow
@@ -563,7 +566,12 @@
             chatContainer.style.opacity = '0';
             
             setTimeout(() => {
-                chatContainer.hide(); // Use the component's hide method
+                // Use the component's hide method if available, otherwise use display property
+                if (typeof chatContainer.hide === 'function') {
+                    chatContainer.hide();
+                } else {
+                    chatContainer.style.display = 'none';
+                }
                 chatContainer.style.transition = '';
                 chatContainer.style.transform = '';
                 chatContainer.style.opacity = '';
