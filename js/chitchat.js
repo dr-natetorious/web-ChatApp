@@ -33,8 +33,8 @@ class ChitChatComponent extends HTMLElement {
         // Initialize chat tools registry - this component owns it
         this.toolsRegistry = new ChatToolsRegistry();
         
-        // Initialize OpenAI client with our registry
-        this.openaiClient = new OpenAIClient('/v1', null, this.toolsRegistry);
+        // Initialize OpenAI client with our registry (endpoint will be set in initializeOptions)
+        this.openaiClient = null;
         
         // Detect screen type and set responsive defaults
         this.screenType = this.detectScreenType();
@@ -141,6 +141,7 @@ class ChitChatComponent extends HTMLElement {
 
     static get observedAttributes() {
         return [
+            'endpoint',
             'theme', 
             'current-user', 
             'enable-emoji', 
@@ -212,6 +213,14 @@ class ChitChatComponent extends HTMLElement {
             this.options.theme = this.getAttribute('theme');
         }
         
+        // Parse endpoint attribute and initialize OpenAI client
+        const endpoint = this.getAttribute('endpoint') || '/v1';
+        if (!this.openaiClient || this.endpoint !== endpoint) {
+            this.endpoint = endpoint;
+            this.openaiClient = new OpenAIClient(endpoint, null, this.toolsRegistry);
+            console.log('[ChitChat] OpenAI client initialized with endpoint:', endpoint);
+        }
+        
         // Parse number attributes
         if (this.hasAttribute('max-messages')) {
             this.options.maxMessages = parseInt(this.getAttribute('max-messages')) || 1000;
@@ -229,6 +238,14 @@ class ChitChatComponent extends HTMLElement {
 
     updateFromAttributes(name, newValue) {
         switch (name) {
+            case 'endpoint':
+                // Reinitialize OpenAI client with new endpoint
+                const endpoint = newValue || '/v1';
+                if (this.endpoint !== endpoint) {
+                    this.endpoint = endpoint;
+                    this.openaiClient = new OpenAIClient(endpoint, null, this.toolsRegistry);
+                }
+                break;
             case 'theme':
                 this.setTheme(newValue);
                 break;
@@ -1085,6 +1102,8 @@ class ChitChatComponent extends HTMLElement {
     async simulateResponse(userMessage) {
         // Use real OpenAI API instead of demo responses
         this.showTypingIndicator();
+        
+        console.log('[ChitChat] Sending message to endpoint:', this.endpoint);
         
         try {
             // Build conversation history

@@ -109,11 +109,9 @@ class ChitChatImageMessage extends ChitChatBaseMessage {
         `;
 
         const img = this.querySelector('.message-image');
-        if (img) {
-            img.addEventListener('click', () => {
-                this.showImageModal(url, caption || alt);
-            });
-        }
+        img.addEventListener('click', () => {
+            this.showImageModal(url, caption || alt);
+        });
     }
 
     showImageModal(url, caption) {
@@ -134,12 +132,6 @@ class ChitChatImageMessage extends ChitChatBaseMessage {
                 </div>
             </div>
         `;
-
-        // Remove existing modal if present
-        const existingModal = document.getElementById('imageModal');
-        if (existingModal) {
-            existingModal.remove();
-        }
 
         // Add modal to document
         document.body.insertAdjacentHTML('beforeend', modalHtml);
@@ -247,20 +239,16 @@ class ChitChatTableMessage extends ChitChatBaseMessage {
         const filterInput = this.querySelector('.filter-input');
         const clearFilterBtn = this.querySelector('.clear-filter-btn');
         
-        if (filterInput) {
-            filterInput.addEventListener('input', (e) => {
-                this.filterText = e.target.value.toLowerCase();
-                this.applyFilter();
-            });
-        }
+        filterInput.addEventListener('input', (e) => {
+            this.filterText = e.target.value.toLowerCase();
+            this.applyFilter();
+        });
 
-        if (clearFilterBtn) {
-            clearFilterBtn.addEventListener('click', () => {
-                filterInput.value = '';
-                this.filterText = '';
-                this.applyFilter();
-            });
-        }
+        clearFilterBtn.addEventListener('click', () => {
+            filterInput.value = '';
+            this.filterText = '';
+            this.applyFilter();
+        });
 
         // Sort functionality
         const sortHeaders = this.querySelectorAll('.sortable-header');
@@ -273,9 +261,7 @@ class ChitChatTableMessage extends ChitChatBaseMessage {
 
         // Excel export functionality
         const exportBtn = this.querySelector('.export-excel-btn');
-        if (exportBtn) {
-            exportBtn.addEventListener('click', () => this.exportToExcel());
-        }
+        exportBtn.addEventListener('click', () => this.exportToExcel());
     }
 
     applyFilter() {
@@ -288,9 +274,7 @@ class ChitChatTableMessage extends ChitChatBaseMessage {
 
         // Update table body
         const tbody = this.querySelector('.table-body');
-        if (tbody) {
-            tbody.innerHTML = this.renderTableRows(filteredRows);
-        }
+        tbody.innerHTML = this.renderTableRows(filteredRows);
 
         // Update row count info
         this.updateRowCountInfo(filteredRows.length);
@@ -354,12 +338,9 @@ class ChitChatTableMessage extends ChitChatBaseMessage {
         const filteredInfo = this.querySelector('.filtered-info');
         const totalRows = this.querySelector('.total-rows');
 
-        if (rowCountSpan) rowCountSpan.textContent = filteredCount;
-        if (totalRows) totalRows.textContent = this.originalRows.length;
-
-        if (filteredInfo) {
-            filteredInfo.style.display = filteredCount < this.originalRows.length ? 'inline' : 'none';
-        }
+        rowCountSpan.textContent = filteredCount;
+        totalRows.textContent = this.originalRows.length;
+        filteredInfo.style.display = filteredCount < this.originalRows.length ? 'inline' : 'none';
     }
 
     exportToExcel() {
@@ -380,28 +361,15 @@ class ChitChatTableMessage extends ChitChatBaseMessage {
         // Create and download file
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
         
-        if (link.download !== undefined) {
-            const url = URL.createObjectURL(blob);
-            link.setAttribute('href', url);
-            link.setAttribute('download', `${title.replace(/[^a-z0-9]/gi, '_')}_${new Date().toISOString().split('T')[0]}.csv`);
-            link.style.visibility = 'hidden';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            
-            // Show success feedback
-            const btn = this.querySelector('.export-excel-btn');
-            if (btn) {
-                const originalHtml = btn.innerHTML;
-                btn.innerHTML = '<i class="bi bi-check-circle"></i> Exported';
-                btn.disabled = true;
-                setTimeout(() => {
-                    btn.innerHTML = originalHtml;
-                    btn.disabled = false;
-                }, 2000);
-            }
-        }
+        link.setAttribute('href', url);
+        link.setAttribute('download', `${title.replace(/[^a-z0-9]/gi, '_')}_${new Date().toISOString().split('T')[0]}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
     }
 }
 
@@ -410,18 +378,10 @@ class ChitChatChartMessage extends ChitChatBaseMessage {
     constructor() {
         super();
         this.chartInstance = null;
-        this.chartType = 'pie';
-        this.chartData = null;
-        this.chartOptions = {};
-        this.chartId = null;
-        this.isInitialized = false;
     }
 
     render() {
         const { title = '', chartType = 'pie', chartData = {}, chartOptions = {} } = this.messageData;
-        this.chartType = chartType;
-        this.chartData = chartData;
-        this.chartOptions = chartOptions;
         
         // Destroy existing chart if it exists
         this.destroyChart();
@@ -438,111 +398,13 @@ class ChitChatChartMessage extends ChitChatBaseMessage {
             </div>
         `;
 
-        // Store chartId and reset initialization flag
-        this.chartId = chartId;
-        this.isInitialized = false;
-        
-        // If already connected, initialize immediately
-        if (this.isConnected) {
-            this.initializeChart();
-        }
-    }
-
-    connectedCallback() {
-        super.connectedCallback();
-        
-        // Only initialize if we have chartId and haven't initialized yet
-        if (this.chartId && !this.isInitialized) {
-            this.initializeChart();
-        }
-    }
-
-    initializeChart() {
-        // Prevent multiple initializations
-        if (this.isInitialized) {
-            return;
-        }
-        
-        const canvas = this.querySelector(`#${this.chartId}`);
-        if (!canvas) {
-            console.error('[ChitChat Chart] Canvas not found');
-            return;
-        }
-
-        // Check if Chart.js is available, if not wait for it
-        if (typeof Chart !== 'undefined') {
-            this.createChart(canvas);
-        } else {
-            // Wait for Chart.js to load via script load event
-            this.waitForChartJS(canvas);
-        }
-    }
-
-    destroyChart() {
-        if (this.chartInstance) {
-            try {
-                this.chartInstance.destroy();
-            } catch (error) {
-                console.warn('[ChitChat Chart] Error destroying chart:', error);
-            }
-            this.chartInstance = null;
-        }
-        this.isInitialized = false;
-    }
-
-    waitForChartJS(canvas) {
-        // Check if Chart.js is already available
-        if (typeof Chart !== 'undefined') {
-            this.createChart(canvas);
-            return;
-        }
-
-        // Listen for Chart.js load event
-        const chartLoadHandler = () => {
-            if (typeof Chart !== 'undefined') {
-                this.createChart(canvas);
-            } else {
-                console.error('[ChitChat Chart] Chart.js loaded event fired but Chart is undefined');
-                this.showChartError(canvas);
-            }
-        };
-
-        // Listen for the custom chartjs-loaded event
-        window.addEventListener('chartjs-loaded', chartLoadHandler, { once: true });
-
-        // Fallback: if Chart.js is already loaded but event was missed
-        if (document.readyState === 'complete') {
-            // Page is fully loaded, Chart.js should be available or failed to load
-            setTimeout(() => {
-                if (typeof Chart === 'undefined') {
-                    window.removeEventListener('chartjs-loaded', chartLoadHandler);
-                    this.showChartError(canvas);
-                }
-            }, 100);
-        }
-    }
-
-    showChartError(canvas) {
-        canvas.parentElement.innerHTML = `
-            <div class="alert alert-warning">
-                <i class="bi bi-exclamation-triangle"></i>
-                Chart.js library not available
-            </div>
-        `;
-    }
-
-    createChart(canvas) {
-        // Prevent multiple chart creation
-        if (this.isInitialized) {
-            return;
-        }
-
+        // Create chart immediately
+        const canvas = this.querySelector(`#${chartId}`);
         const ctx = canvas.getContext('2d');
         
-        // Professional chart configuration
-        const config = {
-            type: this.chartType,
-            data: this.chartData,
+        this.chartInstance = new Chart(ctx, {
+            type: chartType,
+            data: chartData,
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
@@ -562,22 +424,15 @@ class ChitChatChartMessage extends ChitChatBaseMessage {
                         borderWidth: 1
                     }
                 },
-                ...this.chartOptions
+                ...chartOptions
             }
-        };
+        });
+    }
 
-        try {
-            this.chartInstance = new Chart(ctx, config);
-            this.isInitialized = true;
-            
-            // Dispatch custom event when chart is ready
-            this.dispatchEvent(new CustomEvent('chart-ready', {
-                detail: { chartInstance: this.chartInstance },
-                bubbles: true
-            }));
-        } catch (error) {
-            console.error('[ChitChat Chart] Failed to create chart:', error);
-            this.showChartError(canvas);
+    destroyChart() {
+        if (this.chartInstance) {
+            this.chartInstance.destroy();
+            this.chartInstance = null;
         }
     }
 

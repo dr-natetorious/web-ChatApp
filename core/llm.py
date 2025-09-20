@@ -251,7 +251,7 @@ Important: After TOOL_START, provide ONLY the JSON tool call, then TOOL_END. The
 def create_llm(model_name: str) -> BaseLLM:
     """Create appropriate LLM instance based on model name."""
     model_mapping = {
-        "llama": ("meta.llama3-2-90b-instruct-v1:0", LlamaLLM),
+        "llama": ("us.meta.llama3-2-3b-instruct-v1:0", LlamaLLM),
         "nova": ("amazon.nova-pro-v1:0", NovaLLM)
     }
     
