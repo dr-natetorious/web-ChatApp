@@ -48,19 +48,8 @@ class LlamaLLM(BaseLLM):
             "top_p": top_p
         }
         
-        # Always include TOOL_END as a stop sequence when tools are available
-        stop_sequences = []
-        if tools:
-            stop_sequences.append("TOOL_END")
-        
-        if stop:
-            if isinstance(stop, str):
-                stop_sequences.append(stop)
-            else:
-                stop_sequences.extend(stop)
-        
-        if stop_sequences:
-            payload["stop_sequences"] = stop_sequences
+        # Note: LLaMA 3.2 3B on Bedrock doesn't support stop_sequences parameter
+        # The model will naturally stop at appropriate boundaries
         
         return payload
     

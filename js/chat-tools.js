@@ -6,6 +6,7 @@ export class ChatToolsRegistry {
     constructor() {
         this.tools = new Map();
         this.registerBuiltInTools();
+        console.log('[ChatToolsRegistry] Initialized with tools:', Array.from(this.tools.keys()));
     }
     
     /**
@@ -273,12 +274,18 @@ export class ChatToolsRegistry {
      * @returns {Array<Object>} Array of OpenAI tool definitions
      */
     getToolMetadata() {
+        console.log('[ChatToolsRegistry] getToolMetadata called, tools count:', this.tools.size);
+        console.log('[ChatToolsRegistry] Tools map:', this.tools);
+        
         const metadata = [];
-        for (const tool of this.tools.values()) {
+        for (const [name, tool] of this.tools.entries()) {
+            console.log(`[ChatToolsRegistry] Checking tool "${name}":`, tool);
+            console.log(`[ChatToolsRegistry] Tool "${name}" has metadata:`, !!tool.metadata);
             if (tool.metadata) {
                 metadata.push(tool.metadata);
             }
         }
+        console.log('[ChatToolsRegistry] Returning metadata:', metadata);
         return metadata;
     }
     
@@ -287,7 +294,7 @@ export class ChatToolsRegistry {
      * @param {string} name - Tool name
      * @returns {Object|null} Tool metadata
      */
-    getToolMetadata(name) {
+    getToolMetadataByName(name) {
         return this.tools.get(name)?.metadata || null;
     }
     

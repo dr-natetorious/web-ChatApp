@@ -26,7 +26,7 @@ class OpenAIClient {
         for (const [name, handler] of handlers) {
             this.dispatchTable.set(name, {
                 handler,
-                metadata: this.toolsRegistry.getToolMetadata(name)
+                metadata: this.toolsRegistry.getToolMetadataByName(name)
             });
         }
     }
@@ -303,6 +303,7 @@ class OpenAIClient {
         
         const tools = this.generateTools() || [];
         console.log('[OpenAIClient] Generated tools:', tools);
+        console.log('[OpenAIClient] Tools length:', tools.length);
         
         const requestBody = {
             messages: messages,
@@ -311,9 +312,16 @@ class OpenAIClient {
             temperature: options.temperature || 0.7,
             top_p: options.top_p || 1.0,
             stream: true,
-            ...(tools.length > 0 && { tools }),
             ...options
         };
+        
+        // Always include tools if we have any, even if empty array for debugging
+        if (tools.length > 0) {
+            requestBody.tools = tools;
+            console.log('[OpenAIClient] Adding tools to request:', tools);
+        } else {
+            console.log('[OpenAIClient] No tools to add - tools array is empty');
+        }
 
         const url = `${this.baseUrl}/chat/completions`;
         console.log('[OpenAIClient] Making request to:', url);
