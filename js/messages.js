@@ -441,6 +441,335 @@ class ChitChatChartMessage extends ChitChatBaseMessage {
     }
 }
 
+// User Message Component
+class UserMessage extends HTMLElement {
+    constructor() {
+        super();
+        this.messageData = {};
+    }
+
+    static get observedAttributes() {
+        return ['data-message'];
+    }
+
+    attributeChangedCallback(name, oldValue, newValue) {
+        if (name === 'data-message' && newValue) {
+            try {
+                this.messageData = JSON.parse(newValue);
+                this.render();
+            } catch (error) {
+                console.error('[UserMessage] Failed to parse message data:', error);
+            }
+        }
+    }
+
+    connectedCallback() {
+        if (this.hasAttribute('data-message')) {
+            this.attributeChangedCallback('data-message', null, this.getAttribute('data-message'));
+        }
+    }
+
+    render() {
+        const { content = '', timestamp = null } = this.messageData;
+        const timeStr = timestamp ? new Date(timestamp).toLocaleTimeString() : '';
+
+        this.innerHTML = `
+            <div class="message-wrapper user-message">
+                <div class="message-content">
+                    <div class="text-content">${this.escapeHtml(content)}</div>
+                </div>
+                ${timeStr ? `<div class="message-time">${timeStr}</div>` : ''}
+            </div>
+        `;
+    }
+
+    escapeHtml(text) {
+        if (typeof text !== 'string') return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+}
+
+// Assistant Message Component with Tool Support
+class AssistantMessage extends HTMLElement {
+    constructor() {
+        super();
+        this.messageData = {};
+        this.toolInvocations = new Map(); // Track active tool invocations
+    }
+
+    static get observedAttributes() {
+        return ['data-message'];
+    }
+
+    attributeChangedCallback(name, oldValue, newValue) {
+        if (name === 'data-message' && newValue) {
+            try {
+                this.messageData = JSON.parse(newValue);
+                this.render();
+            } catch (error) {
+                console.error('[AssistantMessage] Failed to parse message data:', error);
+            }
+        }
+    }
+
+    connectedCallback() {
+        if (this.hasAttribute('data-message')) {
+            this.attributeChangedCallback('data-message', null, this.getAttribute('data-message'));
+        }
+    }
+
+    render() {
+        const { content = '', timestamp = null } = this.messageData;
+        const timeStr = timestamp ? new Date(timestamp).toLocaleTimeString() : '';
+
+        this.innerHTML = `
+            <div class="message-wrapper assistant-message">
+                <div class="message-content">
+                    <div class="text-content">${this.escapeHtml(content)}</div>
+                    <div class="tool-invocations-container"></div>
+                </div>
+                ${timeStr ? `<div class="message-time">${timeStr}</div>` : ''}
+            </div>
+        `;
+    }
+
+    // Add tool invocation as child element
+    addToolInvocation(toolName, toolId = null) {
+        const container = this.querySelector('.tool-invocations-container');
+        const toolElement = document.createElement('chitchat-tool-invocation');
+        
+        const id = toolId || `tool-${Date.now()}-${Math.random()}`;
+        toolElement.setAttribute('tool-name', toolName);
+        toolElement.setAttribute('tool-id', id);
+        toolElement.setAttribute('status', 'processing');
+        
+        container.appendChild(toolElement);
+        this.toolInvocations.set(id, toolElement);
+        
+        console.log('[AssistantMessage] Added tool invocation:', toolName, id);
+        return { element: toolElement, id };
+    }
+
+    // Update tool invocation status and result
+    updateToolInvocation(toolId, status, resultElement = null) {
+        const toolElement = this.toolInvocations.get(toolId);
+        if (toolElement) {
+            toolElement.setStatus(status);
+            if (resultElement) {
+                toolElement.setResult(resultElement);
+            }
+            console.log('[AssistantMessage] Updated tool invocation:', toolId, status);
+        } else {
+            console.warn('[AssistantMessage] Tool invocation not found:', toolId);
+        }
+    }
+
+    // Update the main text content of the message
+    updateContent(newContent) {
+        const textElement = this.querySelector('.text-content');
+        if (textElement) {
+            textElement.innerHTML = this.escapeHtml(newContent);
+        }
+    }
+
+    escapeHtml(text) {
+        if (typeof text !== 'string') return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+}
+
+// Tool Invocation Component (Simplified for nesting)
+class ChitChatToolInvocation extends HTMLElement {
+    constructor() {
+        super();
+        this.status = 'processing';
+        this.toolName = '';
+        this.toolId = '';
+    }
+
+    static get observedAttributes() {
+        return ['tool-name', 'status', 'tool-id'];
+    }
+
+    attributeChangedCallback(name, oldValue, newValue) {
+        if (name === 'tool-name' && newValue) {
+            this.toolName = newValue;
+            this.updateHeader();
+        } else if (name === 'status' && newValue) {
+            this.status = newValue;
+            this.updateStatus();
+        } else if (name === 'tool-id' && newValue) {
+            this.toolId = newValue;
+        }
+    }
+
+    connectedCallback() {
+        this.render();
+    }
+
+    render() {
+        const toolName = this.toolName || this.getAttribute('tool-name') || 'Unknown Tool';
+        const status = this.status || this.getAttribute('status') || 'processing';
+
+        this.innerHTML = `
+            <div class="tool-invocation ${status}">
+                <div class="tool-header">
+                    <span class="tool-icon">${this.getStatusIcon(status)}</span>
+                    <span class="tool-title">Tool: ${this.escapeHtml(toolName)}</span>
+                    <span class="tool-status-text">${status}</span>
+                </div>
+                <div class="tool-result">
+                    <!-- Tool execution result goes here -->
+                </div>
+            </div>
+        `;
+
+        // Add CSS if not already added
+        this.addToolInvocationStyles();
+    }
+
+    getStatusIcon(status) {
+        const icons = {
+            processing: '<i class="fas fa-spinner fa-spin text-primary"></i>',
+            complete: '<i class="fas fa-check-circle text-success"></i>',
+            success: '<i class="fas fa-check-circle text-success"></i>',
+            error: '<i class="fas fa-exclamation-circle text-danger"></i>'
+        };
+        return icons[status] || icons.processing;
+    }
+
+    updateStatus() {
+        const iconElement = this.querySelector('.tool-icon');
+        const statusElement = this.querySelector('.tool-status-text');
+        const containerElement = this.querySelector('.tool-invocation');
+        
+        if (iconElement) {
+            iconElement.innerHTML = this.getStatusIcon(this.status);
+        }
+        if (statusElement) {
+            statusElement.textContent = this.status;
+        }
+        if (containerElement) {
+            containerElement.className = `tool-invocation ${this.status}`;
+        }
+    }
+
+    updateHeader() {
+        const titleElement = this.querySelector('.tool-title');
+        if (titleElement) {
+            titleElement.innerHTML = `Tool: ${this.escapeHtml(this.toolName)}`;
+        }
+    }
+
+    setStatus(newStatus) {
+        this.status = newStatus;
+        this.setAttribute('status', newStatus);
+    }
+
+    setResult(resultElement) {
+        const resultContainer = this.querySelector('.tool-result');
+        if (resultContainer) {
+            resultContainer.innerHTML = '';
+            if (typeof resultElement === 'string') {
+                resultContainer.innerHTML = resultElement;
+            } else {
+                resultContainer.appendChild(resultElement);
+            }
+            this.setStatus('complete');
+        }
+    }
+
+    escapeHtml(text) {
+        if (typeof text !== 'string') return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    addToolInvocationStyles() {
+        // Check if styles are already added
+        if (document.querySelector('#tool-invocation-styles')) return;
+
+        const style = document.createElement('style');
+        style.id = 'tool-invocation-styles';
+        style.textContent = `
+            .tool-invocation {
+                background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+                border: 1px solid #dee2e6;
+                border-radius: 8px;
+                padding: 8px 12px;
+                margin: 8px 0;
+                font-size: 0.9rem;
+            }
+
+            .tool-invocation.processing {
+                border-left: 4px solid #007bff;
+            }
+
+            .tool-invocation.complete,
+            .tool-invocation.success {
+                border-left: 4px solid #28a745;
+            }
+
+            .tool-invocation.error {
+                border-left: 4px solid #dc3545;
+            }
+
+            .tool-header {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                color: #495057;
+                font-weight: 500;
+            }
+
+            .tool-icon {
+                width: 16px;
+                text-align: center;
+            }
+
+            .tool-title {
+                flex: 1;
+                font-family: 'Courier New', monospace;
+                color: #007bff;
+            }
+
+            .tool-status-text {
+                font-size: 0.8rem;
+                color: #6c757d;
+                text-transform: capitalize;
+            }
+
+            .tool-result {
+                margin-top: 8px;
+                padding-top: 8px;
+                border-top: 1px solid #dee2e6;
+                display: none;
+            }
+
+            .tool-invocation.complete .tool-result,
+            .tool-invocation.success .tool-result {
+                display: block;
+            }
+
+            .tool-result-summary {
+                color: #28a745;
+                font-weight: 500;
+            }
+
+            .tool-result-error {
+                color: #dc3545;
+                font-weight: 500;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+}
+
 // Register all message components
 customElements.define('chitchat-base-message', ChitChatBaseMessage);
 customElements.define('chitchat-text-message', ChitChatTextMessage);
@@ -448,5 +777,8 @@ customElements.define('chitchat-table-message', ChitChatTableMessage);
 customElements.define('chitchat-quick-reply-message', ChitChatQuickReplyMessage);
 customElements.define('chitchat-image-message', ChitChatImageMessage);
 customElements.define('chitchat-chart-message', ChitChatChartMessage);
+customElements.define('chitchat-tool-invocation', ChitChatToolInvocation);
+customElements.define('user-message', UserMessage);
+customElements.define('assistant-message', AssistantMessage);
 
 console.log('[ChitChat Messages] All message components registered successfully');

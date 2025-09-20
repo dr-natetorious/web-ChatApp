@@ -192,64 +192,31 @@ class ChatMessages extends HTMLElement {
     }
     
     createMessageElement(message) {
-        // Use the same rendering logic as the main ChitChat component
-        // to support all message types (charts, tables, etc.)
+        console.log('[ChatMessages] Creating message element for:', message);
         
         const messageElement = document.createElement('div');
         messageElement.className = `message message-${message.type} ${message.sender || 'user'}`;
         messageElement.setAttribute('data-message-id', message.id);
 
-        const messageBubble = document.createElement('div');
-        messageBubble.className = 'message-bubble';
-
-        // Create web component for message using the same mapping as ChitChat
-        const componentMap = {
-            'text': 'chitchat-text-message',
-            'table': 'chitchat-table-message', 
-            'quick_reply': 'chitchat-quick-reply-message',
-            'image': 'chitchat-image-message',
-            'chart': 'chitchat-chart-message'
-        };
-        
-        const componentName = componentMap[message.type];
-        
-        if (componentName) {
-            console.log(`[ChatMessages] Creating ${componentName} for message type: ${message.type}`);
-            const messageComponent = document.createElement(componentName);
-            messageComponent.setAttribute('data-message', JSON.stringify(message));
-            
-            // Handle quick reply events - bubble up to parent
-            if (message.type === 'quick_reply') {
-                messageComponent.addEventListener('quick-reply-selected', (e) => {
-                    this.dispatchEvent(new CustomEvent('quick-reply-selected', {
-                        bubbles: true,
-                        detail: e.detail
-                    }));
-                });
-            }
-            
-            messageBubble.appendChild(messageComponent);
-            
+        // Use simplified sender-based routing
+        if (message.sender === 'user') {
+            const userMessage = document.createElement('user-message');
+            userMessage.setAttribute('data-message', JSON.stringify(message));
+            messageElement.appendChild(userMessage);
         } else {
-            // Fallback to text content
-            console.warn(`[ChatMessages] No component mapping for type: ${message.type}, using fallback`);
-            const fallbackDiv = document.createElement('div');
-            fallbackDiv.className = 'message-content';
-            fallbackDiv.textContent = message.content || `[Unsupported message type: ${message.type}]`;
-            messageBubble.appendChild(fallbackDiv);
-        }
-        
-        messageElement.appendChild(messageBubble);
-
-        // Add timestamp if message has one
-        if (message.timestamp) {
-            const timestampDiv = document.createElement('div');
-            timestampDiv.className = 'message-timestamp';
-            timestampDiv.textContent = this.formatTimestamp(message.timestamp);
-            messageElement.appendChild(timestampDiv);
+            // All non-user messages use assistant-message component
+            const assistantMessage = document.createElement('assistant-message');
+            assistantMessage.setAttribute('data-message', JSON.stringify(message));
+            messageElement.appendChild(assistantMessage);
         }
 
         return messageElement;
+    }
+    
+    // Method to get assistant message by ID for tool management
+    getAssistantMessage(messageId) {
+        const messageWrapper = this.querySelector(`[data-message-id="${messageId}"]`);
+        return messageWrapper ? messageWrapper.querySelector('assistant-message') : null;
     }
     
     updateMessage(messageId, message, updates) {
@@ -287,6 +254,15 @@ class ChatMessages extends HTMLElement {
         }
         
         console.log('[ChatMessages] Message update complete');
+    }
+
+    // Get assistant message component by message ID
+    getAssistantMessage(messageId) {
+        const messageElement = this.querySelector(`[data-message-id="${messageId}"]`);
+        if (messageElement) {
+            return messageElement.querySelector('assistant-message');
+        }
+        return null;
     }
 
     clear() {

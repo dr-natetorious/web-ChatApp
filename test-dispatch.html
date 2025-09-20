@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tool Dispatch Test</title>
+</head>
+<body>
+    <h1>Tool Dispatch Test</h1>
+    <div id="test-results"></div>
+    
+    <script type="module">
+        import { ChatToolsRegistry } from './js/chat-tools.js';
+        
+        console.log('=== Tool Dispatch Test ===');
+        
+        // Create registry and mock OpenAI client
+        const registry = new ChatToolsRegistry();
+        
+        // Mock OpenAI client with dispatch logic
+        class MockOpenAIClient {
+            constructor(toolsRegistry) {
+                this.toolsRegistry = toolsRegistry;
+                this.dispatchTable = new Map();
+                this.setupHandlersFromRegistry();
+            }
+            
+            setupHandlersFromRegistry() {
+                if (!this.toolsRegistry) return;
+                
+                const handlers = this.toolsRegistry.getHandlers();
+                for (const [name, handler] of handlers) {
+                    this.dispatchTable.set(name, {
+                        handler,
+                        metadata: this.toolsRegistry.getToolMetadataByName(name)
+                    });
+                }
+            }
+            
+            dispatchCommand(command, context = null) {
+                console.log('MockOpenAIClient.dispatchCommand called:', command);
+                const handlerData = this.dispatchTable.get(command.method);
+                if (handlerData) {
+                    try {
+                        const handler = handlerData.handler || handlerData;
+                        if (typeof handler === 'function') {
+                            console.log('Calling handler for:', command.method);
+                            handler(command.params, context);
+                        } else if (handler.handler && typeof handler.handler === 'function') {
+                            console.log('Calling nested handler for:', command.method);
+                            handler.handler(command.params, context);
+                        }
+                    } catch (error) {
+                        console.error(`Error executing command ${command.method}:`, error);
+                    }
+                } else {
+                    console.warn(`No handler registered for method: ${command.method}`);
+                }
+            }
+            
+            processCommands(content, onCommand) {
+                // Look for TOOL_START/TOOL_END blocks first
+                const toolPattern = /TOOL_START\s*([\s\S]*?)\s*TOOL_END/g;
+                let match;
+
+                while ((match = toolPattern.exec(content)) !== null) {
+                    try {
+                        const toolData = JSON.parse(match[1].trim());
+                        if (toolData.name && toolData.arguments) {
+                            const command = {
+                                jsonrpc: '2.0',
+                                method: toolData.name,
+                                params: toolData.arguments
+                            };
+                            console.log('Found TOOL block:', command);
+                            onCommand(command);
+                            this.dispatchCommand(command);
+                        }
+                    } catch (e) {
+                        console.warn('Failed to parse TOOL block:', match[1], e);
+                    }
+                }
+            }
+        }
+        
+        // Create mock context (chitchat component)
+        const mockContext = {
+            addChart: function(title, chartType, chartData, chartOptions) {
+                console.log('addChart called with:', { title, chartType, chartData, chartOptions });
+                document.getElementById('test-results').innerHTML += `
+                    <p><strong>✅ Chart Rendered:</strong> ${title} (${chartType})</p>
+                    <pre>${JSON.stringify({ chartData, chartOptions }, null, 2)}</pre>
+                `;
+            }
+        };
+        
+        // Create client and test
+        const client = new MockOpenAIClient(registry);
+        
+        // Test the tool response parsing
+        const testResponse = `
+Here's your chart:
+
+TOOL_START { "name": "render_chart", "arguments": { "title": "Simple Bar Chart", "chartType": "bar", "chartData": { "labels": ["Jan", "Feb", "Mar"], "datasets": [{ "label": "Sales", "data": [100, 150, 200], "backgroundColor": "rgba(255, 99, 132, 0.2)", "borderColor": "rgba(255, 99, 132, 1)" }] }, "chartOptions": { "responsive": true } } } TOOL_END
+
+The chart shows your Q1 sales data.
+        `;
+        
+        console.log('Testing with response:', testResponse);
+        
+        client.processCommands(testResponse, (command) => {
+            console.log('Command callback called:', command);
+            // Pass the mock context to the dispatcher
+            client.dispatchCommand(command, mockContext);
+        });
+        
+        document.getElementById('test-results').innerHTML = '<h2>Test Results:</h2>' + document.getElementById('test-results').innerHTML;
+    </script>
+</body>
+</html>

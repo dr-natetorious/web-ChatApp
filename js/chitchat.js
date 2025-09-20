@@ -1140,11 +1140,11 @@ class ChitChatComponent extends HTMLElement {
         console.log('[ChitChat] Sending message to endpoint:', this.endpoint);
         
         try {
-            // Build conversation history
+            // Build conversation history  
             const messages = this.messages
-                .filter(msg => msg.type === 'text') // Only include text messages
+                .filter(msg => ['user', 'assistant'].includes(msg.sender))
                 .map(msg => ({
-                    role: msg.sender === this.options.currentUser.id ? 'user' : 'assistant',
+                    role: msg.sender === 'user' ? 'user' : 'assistant',
                     content: msg.content
                 }));
             
@@ -1155,9 +1155,15 @@ class ChitChatComponent extends HTMLElement {
             });
             
             console.log('[ChitChat] Conversation history:', messages);
-            
+
+            // Create a single assistant message that will contain everything
+            const assistantMessage = this.addMessage({
+                type: 'text',
+                content: '',
+                sender: 'support'
+            });
+
             let currentMessageContent = '';
-            let currentMessageId = null;
             
             console.log('[ChitChat] Starting streaming chat completion...');
             
@@ -1177,72 +1183,33 @@ class ChitChatComponent extends HTMLElement {
                     if (token && !isComplete) {
                         currentMessageContent += token;
                         
-                        // Create or update the streaming message
-                        if (!currentMessageId) {
-                            console.log('[ChitChat] Creating new streaming message');
-                            const message = this.addMessage({
-                                type: 'text',
-                                content: currentMessageContent,
-                                sender: 'support',
-                                streaming: true
-                            });
-                            currentMessageId = message ? message.id : null;
-                        } else {
-                            // Update existing message
-                            this.updateMessage(currentMessageId, { 
-                                content: currentMessageContent,
-                                streaming: true
-                            });
-                        }
+                        // Update the assistant message content
+                        this.updateAssistantMessageContent(assistantMessage.id, currentMessageContent);
                     }
                     
-                    // Handle completion (regardless of whether we got tokens)
+                    // Handle completion
                     if (isComplete) {
-                        console.log('[ChitChat] Streaming complete, final content:', currentMessageContent);
-                        
-                        // If we never created a message (no tokens received), create one now
-                        if (!currentMessageId && currentMessageContent) {
-                            console.log('[ChitChat] Creating final message with complete content');
-                            const message = this.addMessage({
-                                type: 'text',
-                                content: currentMessageContent,
-                                sender: 'support',
-                                streaming: false
-                            });
-                            currentMessageId = message ? message.id : null;
-                        } else if (currentMessageId) {
-                            // Mark existing streaming message as complete
-                            this.updateMessage(currentMessageId, { 
-                                content: currentMessageContent,
-                                streaming: false 
-                            });
-                        } else if (!currentMessageContent) {
-                            // No content received at all - show error message
-                            console.warn('[ChitChat] No content received from streaming response');
-                            this.addMessage({
-                                type: 'text',
-                                content: 'Sorry, I didn\'t receive a response. Please try again.',
-                                sender: 'support',
-                                streaming: false
-                            });
-                        }
-                        
+                        console.log('[ChitChat] Streaming completed');
                         this.hideTypingIndicator();
                     }
                 },
-                // Command callback - called for JSON-RPC commands
+                // Command callback - called for tool invocations
                 (command) => {
-                    console.log('[ChitChat] Received command:', command);
-                    // Use the registry to dispatch commands
-                    const handler = this.toolsRegistry.getHandler(command.method);
-                    if (handler) {
-                        try {
-                            handler(command.params, this);
-                        } catch (error) {
-                            console.error(`Error executing command ${command.method}:`, error);
-                        }
+                    console.log('[ChitChat] Received tool command:', command);
+                    
+                    // Get the assistant message component for adding tool invocations
+                    const chatMessages = this.querySelector('chat-messages');
+                    const assistantMessageComponent = chatMessages.getAssistantMessage(assistantMessage.id);
+                    
+                    if (assistantMessageComponent) {
+                        // Add tool invocation to the assistant message
+                        const { element: toolElement, id: toolId } = assistantMessageComponent.addToolInvocation(command.method);
+                        const currentToolInvocation = { element: toolElement, id: toolId, component: assistantMessageComponent };
+                        
+                        // Execute the tool
+                        this.executeToolCommand(command, currentToolInvocation);
                     } else {
-                        console.warn(`No handler registered for method: ${command.method}`);
+                        console.warn('[ChitChat] Could not find assistant message component for tool invocation');
                     }
                 }
             );
@@ -1274,6 +1241,97 @@ class ChitChatComponent extends HTMLElement {
                 error: error.message,
                 stack: error.stack
             });
+        }
+    }
+
+    // Helper method to update assistant message content
+    updateAssistantMessageContent(messageId, content) {
+        const chatMessages = this.querySelector('chat-messages');
+        const assistantMessageComponent = chatMessages.getAssistantMessage(messageId);
+        
+        if (assistantMessageComponent) {
+            assistantMessageComponent.updateContent(content);
+        }
+    }
+
+    // Helper method to execute tool commands
+    executeToolCommand(command, toolInvocation) {
+        const handler = this.toolsRegistry.getHandler(command.method);
+        
+        if (handler) {
+            try {
+                // Create a context that captures tool results
+                const toolContext = {
+                    ...this, // Include all chitchat methods
+                    
+                    // Override methods to capture results for the tool invocation
+                    addChart: (title, chartType, chartData, chartOptions = {}) => {
+                        // Create the chart component
+                        const chartElement = document.createElement('chitchat-chart-message');
+                        chartElement.setAttribute('data-message', JSON.stringify({
+                            type: 'chart',
+                            title: title,
+                            chartType: chartType,
+                            chartData: chartData,
+                            chartOptions: chartOptions,
+                            sender: 'support'
+                        }));
+                        
+                        // Add chart to tool invocation result
+                        toolInvocation.element.setResult(chartElement);
+                        
+                        console.log('[ChitChat] Chart added to tool invocation');
+                        return { id: `chart-${Date.now()}` }; // Return a dummy message object
+                    },
+                    
+                    addTable: (title, headers, rows) => {
+                        // Create the table component
+                        const tableElement = document.createElement('chitchat-table-message');
+                        tableElement.setAttribute('data-message', JSON.stringify({
+                            type: 'table',
+                            title: title,
+                            headers: headers,
+                            rows: rows,
+                            sender: 'support'
+                        }));
+                        
+                        // Add table to tool invocation result
+                        toolInvocation.element.setResult(tableElement);
+                        
+                        console.log('[ChitChat] Table added to tool invocation');
+                        return { id: `table-${Date.now()}` }; // Return a dummy message object
+                    },
+                    
+                    addImage: (url, caption = '') => {
+                        // Create the image component
+                        const imageElement = document.createElement('chitchat-image-message');
+                        imageElement.setAttribute('data-message', JSON.stringify({
+                            type: 'image',
+                            url: url,
+                            caption: caption,
+                            sender: 'support'
+                        }));
+                        
+                        // Add image to tool invocation result
+                        toolInvocation.element.setResult(imageElement);
+                        
+                        console.log('[ChitChat] Image added to tool invocation');
+                        return { id: `image-${Date.now()}` }; // Return a dummy message object
+                    }
+                };
+                
+                handler(command.params, toolContext);
+                
+                console.log('[ChitChat] Tool command executed successfully:', command.method);
+            } catch (error) {
+                console.error('[ChitChat] Error executing tool command:', command.method, error);
+                toolInvocation.element.setStatus('error');
+                toolInvocation.element.setResult(`<div class="tool-result-error">❌ Error: ${error.message}</div>`);
+            }
+        } else {
+            console.warn('[ChitChat] No handler found for tool command:', command.method);
+            toolInvocation.element.setStatus('error');
+            toolInvocation.element.setResult(`<div class="tool-result-error">❌ Unknown tool: ${command.method}</div>`);
         }
     }
 
@@ -1511,6 +1569,24 @@ class ChitChatComponent extends HTMLElement {
             chartOptions: chartOptions,
             sender: 'support'
         });
+    }
+
+    addToolInvocation(toolName, status = 'processing') {
+        return this.addMessage({
+            type: 'tool-invocation',
+            toolName: toolName,
+            status: status,
+            sender: 'assistant'
+        });
+    }
+
+    updateToolInvocation(messageElement, status, resultHtml = null) {
+        if (messageElement && messageElement.tagName === 'CHITCHAT-TOOL-INVOCATION') {
+            messageElement.setStatus(status);
+            if (resultHtml) {
+                messageElement.setResult(resultHtml);
+            }
+        }
     }
 
     // === VISIBILITY CONTROL METHODS ===

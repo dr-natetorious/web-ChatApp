@@ -351,6 +351,7 @@ class OpenAIClient {
         const decoder = new TextDecoder();
         let buffer = '';
         let fullContent = '';
+        let toolBuffer = ''; // Buffer for detecting TOOL_START/TOOL_END patterns
 
         try {
             while (true) {
@@ -372,10 +373,7 @@ class OpenAIClient {
                         if (data === '[DONE]') {
                             console.log('[OpenAIClient] Stream completed with [DONE]');
                             if (onToken) onToken('', true);
-                            // Process any function calls or commands in the complete response
-                            if (onCommand) {
-                                this.processCommands(fullContent, onCommand);
-                            }
+                            // Commands are already processed in real-time during streaming
                             return fullContent;
                         }
 
@@ -387,6 +385,11 @@ class OpenAIClient {
                             const content = choice?.delta?.content || '';
                             if (content) {
                                 fullContent += content;
+                                toolBuffer += content; // Add to tool buffer for real-time detection
+                                
+                                // Check for complete TOOL_START/TOOL_END blocks in real-time
+                                toolBuffer = this.processToolBuffer(toolBuffer, onCommand);
+                                
                                 if (onToken) onToken(content, false);
                             }
                             
@@ -402,7 +405,7 @@ class OpenAIClient {
                                                 params: JSON.parse(toolCall.function.arguments || '{}')
                                             };
                                             onCommand(functionCall);
-                                            this.dispatchCommand(functionCall);
+                                            // Removed this.dispatchCommand(functionCall) to prevent duplication
                                         } catch (e) {
                                             console.warn('Failed to parse function call:', toolCall, e);
                                         }
@@ -417,10 +420,8 @@ class OpenAIClient {
                 }
             }
 
-            // Process any JSON-RPC commands in the complete response
-            if (onCommand) {
-                this.processCommands(fullContent, onCommand);
-            }
+            // Note: Commands are already processed in real-time during streaming,
+            // so no need to process them again here to avoid duplication
 
             return fullContent;
 
@@ -430,21 +431,113 @@ class OpenAIClient {
     }
 
     /**
-     * Process JSON-RPC 2.0 commands embedded in response text
+     * Process tool buffer for real-time TOOL_START/TOOL_END detection
+     * @param {string} buffer - Current tool buffer content
+     * @param {Function} onCommand - Command callback
+     * @returns {string} Updated buffer with processed tools removed
+     */
+    processToolBuffer(buffer, onCommand) {
+        const toolPattern = /TOOL_START\s*([\s\S]*?)\s*TOOL_END/g;
+        let match;
+        let lastIndex = 0;
+        let newBuffer = buffer;
+
+        while ((match = toolPattern.exec(buffer)) !== null) {
+            const toolData = this.parseFlexibleJson(match[1].trim());
+            if (toolData && toolData.name && toolData.arguments) {
+                const command = {
+                    jsonrpc: '2.0',
+                    method: toolData.name,
+                    params: toolData.arguments
+                };
+                console.log('[OpenAIClient] Found TOOL block in real-time:', command);
+                onCommand(command);
+                // Removed this.dispatchCommand(command) to prevent duplication
+                
+                // Remove processed tool from buffer
+                newBuffer = newBuffer.replace(match[0], '');
+            } else {
+                console.warn('Failed to parse real-time TOOL block or missing required fields:', match[1]);
+            }
+        }
+
+        return newBuffer;
+    }
+
+    /**
+     * Parse JSON-like content that might contain JavaScript object literal syntax
+     * @param {string} content - Content to parse
+     * @returns {Object|null} Parsed object or null if parsing fails
+     */
+    parseFlexibleJson(content) {
+        // First try standard JSON parsing
+        try {
+            return JSON.parse(content);
+        } catch (e) {
+            // If that fails, try to fix common JavaScript object literal issues
+            try {
+                // Replace unquoted property names with quoted ones
+                let fixed = content
+                    // Replace unquoted property names (word: ) with quoted ones ("word": )
+                    .replace(/([{,]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:/g, '$1"$2":')
+                    // Replace single quotes with double quotes
+                    .replace(/'/g, '"')
+                    // Fix trailing commas (remove them)
+                    .replace(/,(\s*[}\]])/g, '$1');
+                
+                return JSON.parse(fixed);
+            } catch (e2) {
+                // If all else fails, try to evaluate as JavaScript (dangerous but controlled)
+                try {
+                    // Only allow if it looks like a safe object literal
+                    if (content.trim().startsWith('{') && content.trim().endsWith('}')) {
+                        // Use Function constructor to safely evaluate
+                        return new Function('return ' + content)();
+                    }
+                } catch (e3) {
+                    console.warn('All JSON parsing attempts failed:', e, e2, e3);
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Process JSON-RPC 2.0 commands and TOOL_START/TOOL_END blocks embedded in response text
      * @param {string} content - Full response content
      * @param {Function} onCommand - Command callback
      */
     processCommands(content, onCommand) {
+        // Look for TOOL_START/TOOL_END blocks first
+        const toolPattern = /TOOL_START\s*([\s\S]*?)\s*TOOL_END/g;
+        let match;
+
+        while ((match = toolPattern.exec(content)) !== null) {
+            const toolData = this.parseFlexibleJson(match[1].trim());
+            if (toolData && toolData.name && toolData.arguments) {
+                const command = {
+                    jsonrpc: '2.0',
+                    method: toolData.name,
+                    params: toolData.arguments
+                };
+                console.log('[OpenAIClient] Found TOOL block:', command);
+                onCommand(command);
+                // Removed this.dispatchCommand(command) to prevent duplication
+            } else {
+                console.warn('Failed to parse TOOL block or missing required fields:', match[1]);
+            }
+        }
+        
         // Look for JSON-RPC blocks in the content
         const jsonRpcPattern = /```json-rpc\s*([\s\S]*?)\s*```/g;
-        let match;
 
         while ((match = jsonRpcPattern.exec(content)) !== null) {
             try {
                 const command = JSON.parse(match[1]);
                 if (this.isValidJsonRpc(command)) {
+                    console.log('[OpenAIClient] Found JSON-RPC block:', command);
                     onCommand(command);
-                    this.dispatchCommand(command);
+                    // Removed this.dispatchCommand(command) to prevent duplication
                 }
             } catch (e) {
                 console.warn('Failed to parse JSON-RPC command:', match[1], e);

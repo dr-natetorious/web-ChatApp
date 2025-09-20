@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JSON Parsing Test</title>
+</head>
+<body>
+    <h1>JSON Parsing Test</h1>
+    <div id="test-results"></div>
+    
+    <script>
+        // Test the flexible JSON parsing
+        function parseFlexibleJson(content) {
+            // First try standard JSON parsing
+            try {
+                return JSON.parse(content);
+            } catch (e) {
+                // If that fails, try to fix common JavaScript object literal issues
+                try {
+                    // Replace unquoted property names with quoted ones
+                    let fixed = content
+                        // Replace unquoted property names (word: ) with quoted ones ("word": )
+                        .replace(/([{,]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:/g, '$1"$2":')
+                        // Replace single quotes with double quotes
+                        .replace(/'/g, '"')
+                        // Fix trailing commas (remove them)
+                        .replace(/,(\s*[}\]])/g, '$1');
+                    
+                    return JSON.parse(fixed);
+                } catch (e2) {
+                    // If all else fails, try to evaluate as JavaScript (dangerous but controlled)
+                    try {
+                        // Only allow if it looks like a safe object literal
+                        if (content.trim().startsWith('{') && content.trim().endsWith('}')) {
+                            // Use Function constructor to safely evaluate
+                            return new Function('return ' + content)();
+                        }
+                    } catch (e3) {
+                        console.warn('All JSON parsing attempts failed:', e, e2, e3);
+                    }
+                }
+            }
+            return null;
+        }
+
+        // Test cases
+        const testCases = [
+            // Valid JSON
+            '{"name": "test", "value": 123}',
+            
+            // JavaScript object literal (unquoted properties)
+            '{name: "test", value: 123}',
+            
+            // Mixed quotes
+            `{name: 'test', value: "hello"}`,
+            
+            // The problematic case from the error
+            `{
+  "name": "render_chart",
+  "arguments": {
+    "title": "Bar Chart Example",
+    "chartType": "bar",
+    "chartData": {
+      "labels": ["Jan", "Feb", "Mar", "Apr", "May"],
+      "datasets": [{
+        "label": "Sales",
+        "data": [100, 200, 300, 400, 500],
+        "backgroundColor": "rgba(255, 99, 132, 0.2)",
+        "borderColor": "rgba(255, 99, 132, 1)",
+        "borderWidth": 1
+      }]
+    },
+    "chartOptions": {
+      "title": {
+        display: true,
+        text: "Bar Chart Example",
+        fontSize: 16
+      },
+      "legend": {
+        display: true
+      },
+      "scales": {
+        yAxes: [{
+          ticks: {
+            beginAtZero: true
+          }
+        }]
+      }
+    }
+  }
+}`
+        ];
+
+        let results = '<h2>Test Results:</h2>';
+        
+        testCases.forEach((testCase, index) => {
+            console.log(`Testing case ${index + 1}:`, testCase);
+            const result = parseFlexibleJson(testCase);
+            
+            if (result !== null) {
+                results += `<p>✅ <strong>Test ${index + 1}:</strong> Success</p>`;
+                console.log(`Result ${index + 1}:`, result);
+            } else {
+                results += `<p>❌ <strong>Test ${index + 1}:</strong> Failed</p>`;
+                console.log(`Failed ${index + 1}`);
+            }
+        });
+
+        document.getElementById('test-results').innerHTML = results;
+    </script>
+</body>
+</html>
