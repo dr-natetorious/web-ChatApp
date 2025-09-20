@@ -198,25 +198,57 @@ class ChatMessages extends HTMLElement {
         messageElement.className = `message message-${message.type} ${message.sender || 'user'}`;
         messageElement.setAttribute('data-message-id', message.id);
 
-        // Use simplified sender-based routing
+        // Use sender-based routing with message type support
         if (message.sender === 'user') {
             const userMessage = document.createElement('user-message');
             userMessage.setAttribute('data-message', JSON.stringify(message));
             messageElement.appendChild(userMessage);
         } else {
-            // All non-user messages use assistant-message component
-            const assistantMessage = document.createElement('assistant-message');
-            assistantMessage.setAttribute('data-message', JSON.stringify(message));
-            messageElement.appendChild(assistantMessage);
+            // For non-user messages, check if it's a simple text message or should use assistant-message wrapper
+            let componentElement;
+            
+            if (message.type === 'text') {
+                // For text messages from assistant, use assistant-message wrapper
+                componentElement = document.createElement('assistant-message');
+            } else {
+                // For rich message types, use specific components
+                const componentMap = {
+                    'table': 'chitchat-table-message',
+                    'quick_reply': 'chitchat-quick-reply-message',
+                    'image': 'chitchat-image-message',
+                    'chart': 'chitchat-chart-message'
+                };
+                
+                const componentName = componentMap[message.type];
+                if (componentName) {
+                    componentElement = document.createElement(componentName);
+                } else {
+                    // Fallback to assistant-message for unknown types
+                    componentElement = document.createElement('assistant-message');
+                }
+            }
+            
+            componentElement.setAttribute('data-message', JSON.stringify(message));
+            messageElement.appendChild(componentElement);
         }
 
         return messageElement;
     }
     
     // Method to get assistant message by ID for tool management
+    // Only text messages (assistant-message components) support tool invocations
     getAssistantMessage(messageId) {
         const messageWrapper = this.querySelector(`[data-message-id="${messageId}"]`);
-        return messageWrapper ? messageWrapper.querySelector('assistant-message') : null;
+        if (!messageWrapper) return null;
+        
+        // Only assistant-message components support tool invocations
+        const assistantMessage = messageWrapper.querySelector('assistant-message');
+        if (assistantMessage) {
+            return assistantMessage;
+        } else {
+            console.warn('[ChatMessages] Tool invocations can only be added to text messages (assistant-message components)');
+            return null;
+        }
     }
     
     updateMessage(messageId, message, updates) {
