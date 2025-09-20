@@ -94,7 +94,14 @@ class PromptInput extends HTMLElement {
         const textarea = this.querySelector('.prompt-textarea');
         const message = textarea.value.trim();
         
-        if (!message) return;
+        console.log('[PromptInput] Send button clicked, message:', message);
+        
+        if (!message) {
+            console.log('[PromptInput] No message content, ignoring send');
+            return;
+        }
+        
+        console.log('[PromptInput] Dispatching message-send event with message:', message);
         
         this.dispatchEvent(new CustomEvent('message-send', {
             bubbles: true,
@@ -104,6 +111,8 @@ class PromptInput extends HTMLElement {
         textarea.value = '';
         textarea.style.height = 'auto';
         this.updateSendButton();
+        
+        console.log('[PromptInput] Message sent, input cleared');
     }
     
     updateSendButton() {

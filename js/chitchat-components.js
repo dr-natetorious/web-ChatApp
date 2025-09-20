@@ -131,7 +131,7 @@ class ChatMessages extends HTMLElement {
     
     render() {
         this.innerHTML = `
-            <div class="chitchat-messages" style="flex: 1; overflow-y: auto; padding: 1rem;">
+            <div class="chitchat-messages">
                 <div class="messages-container"></div>
                 <div class="typing-indicator" style="display: none;">
                     <div class="typing-animation d-flex align-items-center">
@@ -150,6 +150,7 @@ class ChatMessages extends HTMLElement {
     setupEvents() {
         // Listen for new messages
         this.addEventListenerTracked(this, 'add-message', this.handleAddMessage.bind(this));
+        this.addEventListenerTracked(this, 'update-message', this.handleUpdateMessage.bind(this));
         this.addEventListenerTracked(this, 'clear-messages', this.handleClearMessages.bind(this));
         this.addEventListenerTracked(this, 'show-typing', this.showTypingIndicator.bind(this));
         this.addEventListenerTracked(this, 'hide-typing', this.hideTypingIndicator.bind(this));
@@ -160,19 +161,28 @@ class ChatMessages extends HTMLElement {
         this.addMessage(messageData);
     }
     
+    handleUpdateMessage(e) {
+        const { messageId, message, updates } = e.detail;
+        console.log('[ChatMessages] Updating message:', messageId, updates);
+        this.updateMessage(messageId, message, updates);
+    }
+    
     handleClearMessages() {
         this.clear();
     }
     
     addMessage(messageData) {
+        console.log('[ChatMessages] Adding message:', messageData);
         this.messages.push(messageData);
         
         const messageElement = this.createMessageElement(messageData);
         const container = this.querySelector('.messages-container');
         container.appendChild(messageElement);
         
-        // Auto-scroll to bottom
-        this.scrollToBottom();
+        console.log('[ChatMessages] Message added to DOM');
+        
+        // Don't auto-scroll here - let the parent component handle it
+        // this.scrollToBottom();
         
         // Dispatch event for message added
         this.dispatchEvent(new CustomEvent('message-added', {
@@ -242,6 +252,43 @@ class ChatMessages extends HTMLElement {
         return messageElement;
     }
     
+    updateMessage(messageId, message, updates) {
+        console.log('[ChatMessages] updateMessage called:', messageId, updates);
+        
+        // Find the message element in the DOM
+        const messageElement = this.querySelector(`[data-message-id="${messageId}"]`);
+        if (!messageElement) {
+            console.warn('[ChatMessages] Message element not found for update:', messageId);
+            return;
+        }
+        
+        // Update the content if it's changed
+        if (updates.content !== undefined) {
+            const contentElement = messageElement.querySelector('.message-content, .text-content');
+            if (contentElement) {
+                contentElement.textContent = updates.content;
+                console.log('[ChatMessages] Updated message content');
+            }
+        }
+        
+        // Update streaming indicator
+        if (updates.streaming !== undefined) {
+            if (updates.streaming) {
+                messageElement.classList.add('streaming');
+            } else {
+                messageElement.classList.remove('streaming');
+            }
+        }
+        
+        // Find and update the message in our array
+        const messageIndex = this.messages.findIndex(msg => msg.id === messageId);
+        if (messageIndex !== -1) {
+            Object.assign(this.messages[messageIndex], updates);
+        }
+        
+        console.log('[ChatMessages] Message update complete');
+    }
+
     clear() {
         this.messages = [];
         const container = this.querySelector('.messages-container');
@@ -265,10 +312,22 @@ class ChatMessages extends HTMLElement {
         }
     }
     
-    scrollToBottom() {
+    scrollToBottom(smooth = false) {
         const messagesArea = this.querySelector('.chitchat-messages');
         if (messagesArea) {
-            messagesArea.scrollTop = messagesArea.scrollHeight;
+            console.log('[ChatMessages] Scrolling to bottom, scrollHeight:', messagesArea.scrollHeight);
+            if (smooth) {
+                // Use smooth scrolling for new messages
+                messagesArea.scrollTo({
+                    top: messagesArea.scrollHeight,
+                    behavior: 'smooth'
+                });
+            } else {
+                // Use instant scrolling for streaming updates
+                messagesArea.scrollTop = messagesArea.scrollHeight;
+            }
+        } else {
+            console.warn('[ChatMessages] Messages area not found for scrolling');
         }
     }
     

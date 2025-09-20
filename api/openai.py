@@ -59,27 +59,32 @@ async def create_chat_completion(request: ChatCompletionRequest):
 async def stream_chat_completion(request: ChatCompletionRequest) -> AsyncGenerator[str, None]:
     """Stream chat completion tokens via Server-Sent Events."""
     
-    # Convert messages to Bedrock format
-    bedrock_messages = []
-    for msg in request.messages:
-        bedrock_messages.append({
-            "role": msg.role,
-            "content": [{"text": msg.content}]
-        })
-    
-    # Build Bedrock request
-    bedrock_request = {
-        "modelId": request.model,
-        "messages": bedrock_messages,
-        "inferenceConfig": {
-            "maxTokens": request.max_tokens or 2048,
-            "temperature": request.temperature or 0.7,
-            "topP": request.top_p or 0.9,
-        },
-        "system": [{"text": "You are a helpful AI assistant."}]
-    }
-    
     try:
+        # Create appropriate LLM instance to resolve model alias
+        llm = create_llm(request.model)
+        
+        # Convert messages to Bedrock format
+        bedrock_messages = []
+        for msg in request.messages:
+            bedrock_messages.append({
+                "role": msg.role,
+                "content": [{"text": msg.content}]
+            })
+        
+        # Build Bedrock request - use resolved model ID
+        bedrock_request = {
+            "modelId": llm.model_id,  # Use resolved model ID instead of request.model
+            "messages": bedrock_messages,
+            "inferenceConfig": {
+                "maxTokens": request.max_tokens or 2048,
+                "temperature": request.temperature or 0.7,
+                "topP": request.top_p or 0.9,
+            },
+            "system": [{"text": "You are a helpful AI assistant."}]
+        }
+        
+        logger.info(f"Streaming with resolved model: {llm.model_id}")
+        
         # Create streaming response
         response = bedrock_client.converse_stream(**bedrock_request)
         

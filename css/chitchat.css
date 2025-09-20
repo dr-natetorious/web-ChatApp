@@ -61,6 +61,15 @@
         height: 56px;
     }
 }
+
+/* === CHITCHAT COMPONENT === */
+
+chitchat-component {
+    display: block;
+    height: 600px; /* Fixed height to constrain the component */
+    width: 400px;
+    max-height: 90vh; /* Don't exceed viewport */
+    overflow: hidden; /* Prevent outer scrolling */
 }
 
 /* === CHITCHAT CONTAINER === */
@@ -101,6 +110,11 @@
 }
 
 /* === PROFESSIONAL HEADER STYLING === */
+
+/* Header should be fixed height */
+chat-header {
+    flex-shrink: 0;
+}
 
 .chitchat-header {
     background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
@@ -188,12 +202,23 @@
 
 /* === MESSAGES AREA === */
 
+/* Chat messages component should fill remaining space */
+chat-messages {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 0; /* Important for flex children with scrolling */
+}
+
 .chitchat-messages {
     flex: 1;
     overflow-y: auto;
+    overflow-x: hidden; /* Prevent horizontal scroll */
     padding: 16px;
     background: #f8fafc;
     scroll-behavior: smooth;
+    height: 100%; /* Ensure it takes full height */
 }
 
 .messages-container {
@@ -697,10 +722,6 @@
         width: 36px;
         height: 36px;
     }
-}
-        height: 100% !important;
-        border-radius: 0 !important;
-    }
     
     #chat-toggle {
         bottom: 16px !important;
@@ -909,6 +930,64 @@
     display: flex;
     gap: 0.5rem;
     align-items: flex-end;
+    flex-shrink: 0; /* Important: Don't shrink, stay fixed at bottom */
+}
+
+.chitchat-controls-container {
+    padding: 0.5rem 1rem;
+    background: white;
+    border-top: 1px solid #e5e7eb;
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    flex-shrink: 0; /* Important: Don't shrink, stay fixed at bottom */
+}
+
+.controls-bar {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 1rem;
+}
+
+.controls-left,
+.controls-center,
+.controls-right {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.controls-center {
+    flex: 1;
+    justify-content: center;
+}
+
+/* === COMPONENT ELEMENTS === */
+
+prompt-input {
+    display: block;
+    flex: 1;
+}
+
+file-manager {
+    display: block;
+    flex-shrink: 0;
+}
+
+options-panel {
+    display: block;
+}
+
+chat-resizer {
+    display: block;
+    position: absolute;
+    bottom: -3px;
+    right: -3px;
+    width: 20px;
+    height: 20px;
+    cursor: nw-resize;
+    z-index: 1000;
 }
 
 .chitchat-input {

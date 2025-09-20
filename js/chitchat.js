@@ -452,8 +452,10 @@ class ChitChatComponent extends HTMLElement {
     }
     
     handleMessageSend(e) {
-        const { value } = e.detail;
-        this.sendMessage(value);
+        console.log('[ChitChat] Received message-send event:', e.detail);
+        const { message } = e.detail;  // Fixed: was expecting 'value' but prompt sends 'message'
+        console.log('[ChitChat] Calling sendMessage with:', message);
+        this.sendMessage(message);
     }
     
     handleFileAdded(e) {
@@ -805,6 +807,14 @@ class ChitChatComponent extends HTMLElement {
                 detail: message
             }));
             
+            // Auto-scroll to bottom if enabled
+            if (this.options.autoScroll) {
+                // Use setTimeout to ensure DOM is updated before scrolling
+                setTimeout(() => {
+                    this.scrollToBottom(true); // Smooth scroll for new messages
+                }, 50); // Increased timeout to ensure DOM updates
+            }
+            
             // Emit message added event
             this.emit('message-added', { message });
             
@@ -846,6 +856,13 @@ class ChitChatComponent extends HTMLElement {
                         updates
                     }
                 }));
+                
+                // Auto-scroll during streaming updates if enabled
+                if (this.options.autoScroll && updates.content) {
+                    setTimeout(() => {
+                        this.scrollToBottom(false); // Instant scroll for streaming updates
+                    }, 20); // Slightly longer timeout for streaming updates
+                }
             }
             
             this.otlc.debug('Message updated', { id: messageId, updates });
@@ -1026,12 +1043,21 @@ class ChitChatComponent extends HTMLElement {
     }
 
     sendMessage(content = null) {
+        console.log('[ChitChat] sendMessage called with content:', content);
+        
         try {
             const input = this.querySelector('#chitchat-input');
             const messageContent = content || input?.value.trim();
             
-            if (!messageContent) return;
+            console.log('[ChitChat] Final message content:', messageContent);
+            
+            if (!messageContent) {
+                console.log('[ChitChat] No message content, returning early');
+                return;
+            }
 
+            console.log('[ChitChat] Adding user message to chat');
+            
             // Add user message
             this.addMessage({
                 type: 'text',
@@ -1042,6 +1068,8 @@ class ChitChatComponent extends HTMLElement {
             // Clear input
             if (input) input.value = '';
             
+            console.log('[ChitChat] Dispatching message-sent event');
+            
             // Dispatch message sent event
             this.dispatchEvent(new CustomEvent('chitchat:message-sent', {
                 detail: { content: messageContent, user: this.options.currentUser },
@@ -1051,16 +1079,18 @@ class ChitChatComponent extends HTMLElement {
             this.otlc.counter('chitchat.message.sent');
             this.otlc.debug('Message sent', { length: messageContent.length });
             
-            // Simulate typing and response (for demo)
+            console.log('[ChitChat] Calling simulateResponse to get AI response');
+            
+            // Get AI response immediately (remove demo delay)
             if (this.options.showTypingIndicator) {
                 this.showTypingIndicator();
-                setTimeout(() => {
-                    this.hideTypingIndicator();
-                    this.simulateResponse(messageContent);
-                }, 1000 + Math.random() * 2000);
             }
             
+            // Call simulateResponse directly without delay
+            this.simulateResponse(messageContent);
+            
         } catch (error) {
+            console.error('[ChitChat] Error in sendMessage:', error);
             this.otlc.error('Failed to send message', { error: error.message });
             throw error;
         }
@@ -1100,6 +1130,10 @@ class ChitChatComponent extends HTMLElement {
     }
 
     async simulateResponse(userMessage) {
+        console.log('[ChitChat] simulateResponse called with message:', userMessage);
+        console.log('[ChitChat] OpenAI client endpoint:', this.endpoint);
+        console.log('[ChitChat] OpenAI client instance:', this.openaiClient);
+        
         // Use real OpenAI API instead of demo responses
         this.showTypingIndicator();
         
@@ -1120,8 +1154,12 @@ class ChitChatComponent extends HTMLElement {
                 content: userMessage
             });
             
+            console.log('[ChitChat] Conversation history:', messages);
+            
             let currentMessageContent = '';
             let currentMessageId = null;
+            
+            console.log('[ChitChat] Starting streaming chat completion...');
             
             // Stream the response
             await this.openaiClient.streamChatCompletion(
@@ -1133,11 +1171,14 @@ class ChitChatComponent extends HTMLElement {
                 },
                 // Token callback - called for each token
                 (token, isComplete) => {
+                    console.log('[ChitChat] Received token:', token, 'isComplete:', isComplete);
+                    
                     if (token && !isComplete) {
                         currentMessageContent += token;
                         
                         // Create or update the streaming message
                         if (!currentMessageId) {
+                            console.log('[ChitChat] Creating new streaming message');
                             const message = this.addMessage({
                                 type: 'text',
                                 content: currentMessageContent,
@@ -1155,6 +1196,7 @@ class ChitChatComponent extends HTMLElement {
                     }
                     
                     if (isComplete) {
+                        console.log('[ChitChat] Streaming complete, final content:', currentMessageContent);
                         // Mark streaming as complete
                         if (currentMessageId) {
                             this.updateMessage(currentMessageId, { 
@@ -1166,6 +1208,7 @@ class ChitChatComponent extends HTMLElement {
                 },
                 // Command callback - called for JSON-RPC commands
                 (command) => {
+                    console.log('[ChitChat] Received command:', command);
                     // Use the registry to dispatch commands
                     const handler = this.toolsRegistry.getHandler(command.method);
                     if (handler) {
@@ -1182,13 +1225,30 @@ class ChitChatComponent extends HTMLElement {
             
         } catch (error) {
             this.hideTypingIndicator();
-            console.error('OpenAI API error:', error);
+            console.error('[ChitChat] OpenAI API error:', error);
             
-            // Fallback to simple response on error
+            // Show detailed error message to user
+            let errorMessage = 'I apologize, but I encountered an error. Please try again.';
+            
+            if (error.message.includes('404')) {
+                errorMessage = 'Unable to connect to the chat service. Please check if the server is running.';
+            } else if (error.message.includes('500')) {
+                errorMessage = 'Server error occurred. Please try again in a moment.';
+            } else if (error.message.includes('NetworkError') || error.message.includes('fetch')) {
+                errorMessage = 'Network connection error. Please check your internet connection.';
+            }
+            
             this.addMessage({
                 type: 'text',
-                content: 'I apologize, but I encountered an error. Please try again.',
+                content: `❌ ${errorMessage}\n\n*Error details: ${error.message}*`,
                 sender: 'support'
+            });
+            
+            // Log detailed error for debugging
+            console.error('[ChitChat] Detailed error info:', {
+                endpoint: this.endpoint,
+                error: error.message,
+                stack: error.stack
             });
         }
     }
@@ -1209,11 +1269,31 @@ class ChitChatComponent extends HTMLElement {
         }
     }
 
-    scrollToBottom() {
+    scrollToBottom(smooth = false) {
+        console.log('[ChitChat] scrollToBottom called, smooth:', smooth);
         const chatMessages = this.querySelector('chat-messages');
         if (chatMessages) {
-            chatMessages.scrollToBottom();
+            console.log('[ChitChat] Found chat-messages component, calling scrollToBottom');
+            chatMessages.scrollToBottom(smooth);
+            
+            // Also try direct DOM manipulation as fallback
+            const messagesArea = chatMessages.querySelector('.chitchat-messages');
+            if (messagesArea) {
+                console.log('[ChitChat] Direct scroll fallback - scrollHeight:', messagesArea.scrollHeight);
+                messagesArea.scrollTop = messagesArea.scrollHeight;
+            }
+        } else {
+            console.warn('[ChitChat] chat-messages component not found for scrolling');
         }
+        
+        // Make this available for manual testing
+        window.testScroll = () => {
+            const messagesArea = this.querySelector('chat-messages .chitchat-messages');
+            if (messagesArea) {
+                console.log('Manual scroll test - scrollHeight:', messagesArea.scrollHeight);
+                messagesArea.scrollTop = messagesArea.scrollHeight;
+            }
+        };
     }
 
     toggleFileUpload() {

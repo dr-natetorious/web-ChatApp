@@ -215,9 +215,14 @@ class OpenAIClient {
      * @returns {Array} OpenAI-compatible tools array
      */
     generateTools() {
+        console.log('[OpenAIClient] generateTools called');
+        console.log('[OpenAIClient] toolsRegistry:', this.toolsRegistry);
+        
         // If we have a tools registry, use it
         if (this.toolsRegistry) {
-            return this.toolsRegistry.getToolMetadata();
+            const metadata = this.toolsRegistry.getToolMetadata();
+            console.log('[OpenAIClient] Registry metadata:', metadata);
+            return metadata || [];
         }
         
         // Fallback: generate tools from registered handlers with metadata
@@ -242,6 +247,7 @@ class OpenAIClient {
             }
         }
         
+        console.log('[OpenAIClient] Generated tools:', tools);
         return tools;
     }
 
@@ -290,7 +296,13 @@ class OpenAIClient {
      * @returns {Promise<void>}
      */
     async streamChatCompletion(messages, options = {}, onToken = null, onCommand = null) {
-        const tools = this.generateTools();
+        console.log('[OpenAIClient] streamChatCompletion called');
+        console.log('[OpenAIClient] baseUrl:', this.baseUrl);
+        console.log('[OpenAIClient] messages:', messages);
+        console.log('[OpenAIClient] options:', options);
+        
+        const tools = this.generateTools() || [];
+        console.log('[OpenAIClient] Generated tools:', tools);
         
         const requestBody = {
             messages: messages,
@@ -303,7 +315,11 @@ class OpenAIClient {
             ...options
         };
 
-        const response = await fetch(`${this.baseUrl}/chat/completions`, {
+        const url = `${this.baseUrl}/chat/completions`;
+        console.log('[OpenAIClient] Making request to:', url);
+        console.log('[OpenAIClient] Request body:', requestBody);
+
+        const response = await fetch(url, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -312,9 +328,16 @@ class OpenAIClient {
             body: JSON.stringify(requestBody)
         });
 
+        console.log('[OpenAIClient] Response status:', response.status);
+        console.log('[OpenAIClient] Response headers:', response.headers);
+
         if (!response.ok) {
-            throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`);
+            const errorText = await response.text();
+            console.error('[OpenAIClient] API error response:', errorText);
+            throw new Error(`OpenAI API error: ${response.status} ${response.statusText} - ${errorText}`);
         }
+
+        console.log('[OpenAIClient] Starting to read streaming response...');
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
@@ -324,7 +347,10 @@ class OpenAIClient {
         try {
             while (true) {
                 const { done, value } = await reader.read();
-                if (done) break;
+                if (done) {
+                    console.log('[OpenAIClient] Stream reading complete');
+                    break;
+                }
 
                 buffer += decoder.decode(value, { stream: true });
                 const lines = buffer.split('\n');
@@ -333,8 +359,10 @@ class OpenAIClient {
                 for (const line of lines) {
                     if (line.startsWith('data: ')) {
                         const data = line.slice(6).trim();
+                        console.log('[OpenAIClient] Received SSE data:', data);
                         
                         if (data === '[DONE]') {
+                            console.log('[OpenAIClient] Stream completed with [DONE]');
                             if (onToken) onToken('', true);
                             // Process any function calls or commands in the complete response
                             if (onCommand) {
