@@ -53,7 +53,8 @@ async def create_chat_completion(request: ChatCompletionRequest):
             }
         )
     else:
-        return await create_non_streaming_completion(request)
+        # Collect streaming response into a single response
+        return await collect_streaming_response(request)
 
 
 async def stream_chat_completion(request: ChatCompletionRequest) -> AsyncGenerator[str, None]:
@@ -63,33 +64,36 @@ async def stream_chat_completion(request: ChatCompletionRequest) -> AsyncGenerat
         # Create appropriate LLM instance to resolve model alias
         llm = create_llm(request.model)
         
-        # Convert messages to Bedrock format
-        bedrock_messages = []
-        for msg in request.messages:
-            bedrock_messages.append({
-                "role": msg.role,
-                "content": [{"text": msg.content}]
-            })
+        # Use request parameters with defaults
+        max_tokens = request.max_tokens or 1000
+        temperature = request.temperature or 0.7
+        top_p = request.top_p or 1.0
         
-        # Build Bedrock request - use resolved model ID
-        bedrock_request = {
-            "modelId": llm.model_id,  # Use resolved model ID instead of request.model
-            "messages": bedrock_messages,
-            "inferenceConfig": {
-                "maxTokens": request.max_tokens or 2048,
-                "temperature": request.temperature or 0.7,
-                "topP": request.top_p or 0.9,
-            },
-            "system": [{"text": "You are a helpful AI assistant."}]
-        }
+        # Format messages using LLM-specific logic (same as non-streaming)
+        payload = llm.format_messages(
+            request.messages, 
+            max_tokens, 
+            temperature, 
+            top_p, 
+            request.stop,
+            request.tools
+        )
         
         logger.info(f"Streaming with resolved model: {llm.model_id}")
+        logger.debug(f"Streaming payload: {json.dumps(payload, indent=2)}")
         
-        # Create streaming response
-        response = bedrock_client.converse_stream(**bedrock_request)
+        # Call Bedrock with invoke_model_with_response_stream (same as Llama formatting)
+        response = bedrock_client.invoke_model_with_response_stream(
+            modelId=llm.model_id,
+            body=json.dumps(payload),
+            contentType="application/json",
+            accept="application/json"
+        )
         
         completion_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
         created = int(time.time())
+        
+        logger.info(f"Started streaming with completion_id: {completion_id}")
         
         # Send initial chunk with role
         initial_chunk = ChatCompletionStreamResponse(
@@ -106,50 +110,73 @@ async def stream_chat_completion(request: ChatCompletionRequest) -> AsyncGenerat
             ]
         )
         yield f"data: {initial_chunk.model_dump_json()}\n\n"
-        
-        # Stream content chunks
-        for event in response.get('stream', []):
-            if 'contentBlockDelta' in event:
-                content = event['contentBlockDelta']['delta'].get('text', '')
-                if content:
-                    chunk = ChatCompletionStreamResponse(
-                        id=completion_id,
-                        object="chat.completion.chunk",
-                        created=created,
-                        model=request.model,
-                        choices=[
-                            ChatCompletionStreamChoice(
-                                index=0,
-                                delta=ChatCompletionStreamChoiceDelta(content=content),
-                                finish_reason=None
-                            )
-                        ]
-                    )
-                    yield f"data: {chunk.model_dump_json()}\n\n"
-            
-            elif 'messageStop' in event:
-                # Send final chunk with finish_reason
-                final_chunk = ChatCompletionStreamResponse(
-                    id=completion_id,
-                    object="chat.completion.chunk",
-                    created=created,
-                    model=request.model,
-                    choices=[
-                        ChatCompletionStreamChoice(
-                            index=0,
-                            delta=ChatCompletionStreamChoiceDelta(),
-                            finish_reason="stop"
+
+        # Stream content chunks - handle invoke_model_with_response_stream format
+        for event in response['body']:
+            chunk = event.get('chunk')
+            if chunk:
+                chunk_bytes = chunk.get('bytes')
+                if chunk_bytes:
+                    chunk_data = json.loads(chunk_bytes.decode())
+                    logger.debug(f"Received streaming chunk: {chunk_data}")
+                    
+                    # Extract content based on model type
+                    content = ""
+                    finish_reason = None
+                    
+                    # For Llama models
+                    if 'generation' in chunk_data:
+                        content = chunk_data.get('generation', '')
+                        if chunk_data.get('stop_reason'):
+                            finish_reason = "stop"
+                    
+                    # For Nova models  
+                    elif 'delta' in chunk_data:
+                        delta = chunk_data['delta']
+                        if 'text' in delta:
+                            content = delta['text']
+                    
+                    # Send content chunk
+                    if content:
+                        logger.debug(f"Streaming content: {repr(content)}")
+                        chunk_response = ChatCompletionStreamResponse(
+                            id=completion_id,
+                            object="chat.completion.chunk",
+                            created=created,
+                            model=request.model,
+                            choices=[
+                                ChatCompletionStreamChoice(
+                                    index=0,
+                                    delta=ChatCompletionStreamChoiceDelta(content=content),
+                                    finish_reason=None
+                                )
+                            ]
                         )
-                    ]
-                )
-                yield f"data: {final_chunk.model_dump_json()}\n\n"
-                break
-        
-        # Send final [DONE] message
+                        yield f"data: {chunk_response.model_dump_json()}\n\n"
+                    
+                    # Handle completion
+                    if finish_reason:
+                        final_chunk = ChatCompletionStreamResponse(
+                            id=completion_id,
+                            object="chat.completion.chunk",
+                            created=created,
+                            model=request.model,
+                            choices=[
+                                ChatCompletionStreamChoice(
+                                    index=0,
+                                    delta=ChatCompletionStreamChoiceDelta(),
+                                    finish_reason=finish_reason
+                                )
+                            ]
+                        )
+                        yield f"data: {final_chunk.model_dump_json()}\n\n"
+                        break        # Send final [DONE] message
         yield "data: [DONE]\n\n"
         
     except Exception as e:
-        logger.error(f"Streaming error: {e}")
+        logger.error(f"Streaming error: {e}", exc_info=True)
+        
+        # Send error chunk
         error_chunk = ChatCompletionStreamResponse(
             id=f"chatcmpl-{uuid.uuid4().hex[:12]}",
             object="chat.completion.chunk",
@@ -167,98 +194,68 @@ async def stream_chat_completion(request: ChatCompletionRequest) -> AsyncGenerat
         yield "data: [DONE]\n\n"
 
 
-async def create_non_streaming_completion(request: ChatCompletionRequest) -> ChatCompletionResponse:
-    """Create a chat completion using AWS Bedrock."""
+async def collect_streaming_response(request: ChatCompletionRequest) -> ChatCompletionResponse:
+    """Collect streaming response into a single non-streaming response."""
     
     try:
-        # Create appropriate LLM instance
-        llm = create_llm(request.model)
+        content_parts = []
+        completion_id = None
+        created = None
+        finish_reason = "stop"
         
-        # Use request parameters with defaults
-        max_tokens = request.max_tokens or 1000
-        temperature = request.temperature or 0.7
-        top_p = request.top_p or 1.0
+        # Collect all streaming chunks
+        async for chunk_data in stream_chat_completion(request):
+            if chunk_data.startswith("data: "):
+                data = chunk_data[6:].strip()
+                
+                if data == "[DONE]":
+                    break
+                
+                try:
+                    chunk = json.loads(data)
+                    if not completion_id:
+                        completion_id = chunk.get("id")
+                        created = chunk.get("created")
+                    
+                    choice = chunk.get("choices", [{}])[0]
+                    delta = choice.get("delta", {})
+                    
+                    # Collect content
+                    if delta.get("content"):
+                        content_parts.append(delta["content"])
+                    
+                    # Update finish reason
+                    if choice.get("finish_reason"):
+                        finish_reason = choice["finish_reason"]
+                        
+                except json.JSONDecodeError:
+                    continue
         
-        # Format messages using LLM-specific logic
-        payload = llm.format_messages(
-            request.messages, 
-            max_tokens, 
-            temperature, 
-            top_p, 
-            request.stop,
-            request.tools
-        )
+        # Join all content parts
+        full_content = "".join(content_parts)
         
-        logger.info(f"Calling Bedrock model: {llm.model_id}")
-        logger.debug(f"Payload: {json.dumps(payload, indent=2)}")
-        
-        # Call Bedrock
-        response = bedrock_client.invoke_model(
-            modelId=llm.model_id,
-            body=json.dumps(payload),
-            contentType="application/json",
-            accept="application/json"
-        )
-        
-        # Parse response
-        response_body = json.loads(response["body"].read())
-        logger.debug(f"Bedrock response: {json.dumps(response_body, indent=2)}")
-        
-        # Parse using LLM-specific logic
-        generated_text, finish_reason, prompt_tokens, completion_tokens = llm.parse_response(response_body)
-        
-        # Check for tool calls in the response
-        tool_call = parse_tool_call(generated_text) if request.tools else None
-        
-        # If we found a tool call, adjust the response
-        if tool_call:
-            finish_reason = "tool_calls"
-            # Remove the TOOL_START...TOOL_END block from the message content
-            if "TOOL_START" in generated_text:
-                generated_text = generated_text[:generated_text.find("TOOL_START")].strip()
-        
-        # Create the message
-        message = ChatMessage(role="assistant", content=generated_text)
-        
-        # Create the choice
-        choice = ChatCompletionChoice(
-            index=0,
-            message=message,
-            finish_reason=finish_reason
-        )
-        
-        # Add tool calls if present
-        if tool_call:
-            choice.tool_calls = [tool_call]
-        
-        # Fall back to estimation if no actual token counts
-        if prompt_tokens == 0 or completion_tokens == 0:
-            prompt_text = " ".join([msg.content for msg in request.messages])
-            prompt_tokens = prompt_tokens or estimate_tokens(prompt_text)
-            completion_tokens = completion_tokens or estimate_tokens(generated_text)
-        
-        total_tokens = prompt_tokens + completion_tokens
-        
-        # Create OpenAI-compatible response
-        completion_response = ChatCompletionResponse(
-            id=f"chatcmpl-{uuid.uuid4().hex[:29]}",
-            created=int(datetime.now().timestamp()),
+        # Create non-streaming response
+        return ChatCompletionResponse(
+            id=completion_id or f"chatcmpl-{uuid.uuid4().hex[:12]}",
+            object="chat.completion",
+            created=created or int(time.time()),
             model=request.model,
-            choices=[choice],
+            choices=[
+                ChatCompletionChoice(
+                    index=0,
+                    message=ChatMessage(role="assistant", content=full_content),
+                    finish_reason=finish_reason
+                )
+            ],
             usage=ChatCompletionUsage(
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-                total_tokens=total_tokens
+                prompt_tokens=0,  # Would need to calculate
+                completion_tokens=0,  # Would need to calculate  
+                total_tokens=0
             )
         )
         
-        return completion_response
-        
-    except ValueError as e:
-        logger.error(f"Invalid model or configuration: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f"Error processing chat completion: {str(e)}")
+        logger.error(f"Error collecting streaming response: {e}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 

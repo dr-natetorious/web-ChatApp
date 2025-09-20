@@ -1173,6 +1173,7 @@ class ChitChatComponent extends HTMLElement {
                 (token, isComplete) => {
                     console.log('[ChitChat] Received token:', token, 'isComplete:', isComplete);
                     
+                    // Handle token content (when there's actual content and not complete)
                     if (token && !isComplete) {
                         currentMessageContent += token;
                         
@@ -1190,19 +1191,42 @@ class ChitChatComponent extends HTMLElement {
                             // Update existing message
                             this.updateMessage(currentMessageId, { 
                                 content: currentMessageContent,
-                                streaming: !isComplete
+                                streaming: true
                             });
                         }
                     }
                     
+                    // Handle completion (regardless of whether we got tokens)
                     if (isComplete) {
                         console.log('[ChitChat] Streaming complete, final content:', currentMessageContent);
-                        // Mark streaming as complete
-                        if (currentMessageId) {
+                        
+                        // If we never created a message (no tokens received), create one now
+                        if (!currentMessageId && currentMessageContent) {
+                            console.log('[ChitChat] Creating final message with complete content');
+                            const message = this.addMessage({
+                                type: 'text',
+                                content: currentMessageContent,
+                                sender: 'support',
+                                streaming: false
+                            });
+                            currentMessageId = message ? message.id : null;
+                        } else if (currentMessageId) {
+                            // Mark existing streaming message as complete
                             this.updateMessage(currentMessageId, { 
+                                content: currentMessageContent,
                                 streaming: false 
                             });
+                        } else if (!currentMessageContent) {
+                            // No content received at all - show error message
+                            console.warn('[ChitChat] No content received from streaming response');
+                            this.addMessage({
+                                type: 'text',
+                                content: 'Sorry, I didn\'t receive a response. Please try again.',
+                                sender: 'support',
+                                streaming: false
+                            });
                         }
+                        
                         this.hideTypingIndicator();
                     }
                 },
