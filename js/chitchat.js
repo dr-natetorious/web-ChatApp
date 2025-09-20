@@ -1256,82 +1256,93 @@ class ChitChatComponent extends HTMLElement {
 
     // Helper method to execute tool commands
     executeToolCommand(command, toolInvocation) {
-        const handler = this.toolsRegistry.getHandler(command.method);
-        
-        if (handler) {
-            try {
-                // Create a context that captures tool results
-                const toolContext = {
-                    ...this, // Include all chitchat methods
-                    
-                    // Override methods to capture results for the tool invocation
-                    addChart: (title, chartType, chartData, chartOptions = {}) => {
-                        // Create the chart component
-                        const chartElement = document.createElement('chitchat-chart-message');
-                        chartElement.setAttribute('data-message', JSON.stringify({
-                            type: 'chart',
-                            title: title,
-                            chartType: chartType,
-                            chartData: chartData,
-                            chartOptions: chartOptions,
-                            sender: 'support'
-                        }));
-                        
-                        // Add chart to tool invocation result
-                        toolInvocation.element.setResult(chartElement);
-                        
-                        console.log('[ChitChat] Chart added to tool invocation');
-                        return { id: `chart-${Date.now()}` }; // Return a dummy message object
-                    },
-                    
-                    addTable: (title, headers, rows) => {
-                        // Create the table component
-                        const tableElement = document.createElement('chitchat-table-message');
-                        tableElement.setAttribute('data-message', JSON.stringify({
-                            type: 'table',
-                            title: title,
-                            headers: headers,
-                            rows: rows,
-                            sender: 'support'
-                        }));
-                        
-                        // Add table to tool invocation result
-                        toolInvocation.element.setResult(tableElement);
-                        
-                        console.log('[ChitChat] Table added to tool invocation');
-                        return { id: `table-${Date.now()}` }; // Return a dummy message object
-                    },
-                    
-                    addImage: (url, caption = '') => {
-                        // Create the image component
-                        const imageElement = document.createElement('chitchat-image-message');
-                        imageElement.setAttribute('data-message', JSON.stringify({
-                            type: 'image',
-                            url: url,
-                            caption: caption,
-                            sender: 'support'
-                        }));
-                        
-                        // Add image to tool invocation result
-                        toolInvocation.element.setResult(imageElement);
-                        
-                        console.log('[ChitChat] Image added to tool invocation');
-                        return { id: `image-${Date.now()}` }; // Return a dummy message object
-                    }
-                };
+        try {
+            // Create a context that captures tool results for the tool invocation
+            const toolContext = {
+                ...this, // Include all chitchat methods
                 
-                handler(command.params, toolContext);
+                // Override methods to capture results for the tool invocation
+                addChart: (title, chartType, chartData, chartOptions = {}) => {
+                    // Create the chart component
+                    const chartElement = document.createElement('chitchat-chart-message');
+                    chartElement.setAttribute('data-message', JSON.stringify({
+                        type: 'chart',
+                        title: title,
+                        chartType: chartType,
+                        chartData: chartData,
+                        chartOptions: chartOptions,
+                        sender: 'support'
+                    }));
+                    
+                    // Add chart to tool invocation result
+                    toolInvocation.element.setResult(chartElement);
+                    
+                    console.log('[ChitChat] Chart added to tool invocation');
+                    return { id: `chart-${Date.now()}` }; // Return a dummy message object
+                },
                 
-                console.log('[ChitChat] Tool command executed successfully:', command.method);
-            } catch (error) {
-                console.error('[ChitChat] Error executing tool command:', command.method, error);
-                toolInvocation.element.setStatus('error');
-                toolInvocation.element.setResult(`<div class="tool-result-error">❌ Error: ${error.message}</div>`);
-            }
-        } else {
-            console.warn('[ChitChat] No handler found for tool command:', command.method);
+                addTable: (title, headers, rows) => {
+                    // Create the table component
+                    const tableElement = document.createElement('chitchat-table-message');
+                    tableElement.setAttribute('data-message', JSON.stringify({
+                        type: 'table',
+                        title: title,
+                        headers: headers,
+                        rows: rows,
+                        sender: 'support'
+                    }));
+                    
+                    // Add table to tool invocation result
+                    toolInvocation.element.setResult(tableElement);
+                    
+                    console.log('[ChitChat] Table added to tool invocation');
+                    return { id: `table-${Date.now()}` }; // Return a dummy message object
+                },
+                
+                addImage: (url, caption = '') => {
+                    // Create the image component
+                    const imageElement = document.createElement('chitchat-image-message');
+                    imageElement.setAttribute('data-message', JSON.stringify({
+                        type: 'image',
+                        url: url,
+                        caption: caption,
+                        sender: 'support'
+                    }));
+                    
+                    // Add image to tool invocation result
+                    toolInvocation.element.setResult(imageElement);
+                    
+                    console.log('[ChitChat] Image added to tool invocation');
+                    return { id: `image-${Date.now()}` }; // Return a dummy message object
+                },
+                
+                addQuickReply: (content, replies) => {
+                    // Create the quick reply component
+                    const quickReplyElement = document.createElement('chitchat-quick-reply-message');
+                    quickReplyElement.setAttribute('data-message', JSON.stringify({
+                        type: 'quick_reply',
+                        content: content,
+                        replies: replies,
+                        sender: 'support'
+                    }));
+                    
+                    // Add quick reply to tool invocation result
+                    toolInvocation.element.setResult(quickReplyElement);
+                    
+                    console.log('[ChitChat] Quick reply added to tool invocation');
+                    return { id: `quick-reply-${Date.now()}` }; // Return a dummy message object
+                }
+            };
+            
+            // Use the consolidated registry to execute the command
+            this.toolsRegistry.executeCommand(command, toolContext);
+            toolInvocation.element.setStatus('complete');
+            
+            console.log('[ChitChat] Tool command executed successfully:', command.method);
+        } catch (error) {
+            console.error('[ChitChat] Error executing tool command:', command.method, error);
             toolInvocation.element.setStatus('error');
-            toolInvocation.element.setResult(`<div class="tool-result-error">❌ Unknown tool: ${command.method}</div>`);
+            toolInvocation.element.setResult(`<div class="tool-result-error">❌ Error: ${error.message}</div>`);
         }
     }
 

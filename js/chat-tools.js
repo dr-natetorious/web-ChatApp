@@ -316,6 +316,123 @@ export class ChatToolsRegistry {
     }
     
     /**
+     * Execute a command in multiple formats (JSON-RPC 2.0 or TOOL_START format)
+     * @param {Object} command - Command object
+     * @param {Object} context - Execution context (usually ChitChat component)
+     * @returns {any} Result from handler execution
+     */
+    executeCommand(command, context) {
+        let toolName, params;
+        
+        // Handle JSON-RPC 2.0 format: { jsonrpc: '2.0', method: 'tool_name', params: {...} }
+        if (command.method && command.jsonrpc === '2.0') {
+            toolName = command.method;
+            params = command.params || {};
+        }
+        // Handle TOOL_START format: { name: 'tool_name', arguments: {...} }
+        else if (command.name) {
+            toolName = command.name;
+            params = command.arguments || {};
+        }
+        // Handle direct format: { method: 'tool_name', params: {...} }
+        else if (command.method) {
+            toolName = command.method;
+            params = command.params || {};
+        }
+        else {
+            console.warn('[ChatToolsRegistry] Unknown command format:', command);
+            return null;
+        }
+        
+        const handler = this.getHandler(toolName);
+        if (!handler) {
+            console.warn(`[ChatToolsRegistry] No handler found for tool: ${toolName}`);
+            return null;
+        }
+        
+        try {
+            console.log(`[ChatToolsRegistry] Executing tool "${toolName}" with params:`, params);
+            return handler(params, context);
+        } catch (error) {
+            console.error(`[ChatToolsRegistry] Error executing tool "${toolName}":`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * Parse commands from text content (supports TOOL_START/TOOL_END and JSON-RPC blocks)
+     * @param {string} content - Text content to parse
+     * @returns {Array<Object>} Array of parsed commands
+     */
+    parseCommands(content) {
+        const commands = [];
+        
+        // Parse TOOL_START/TOOL_END blocks
+        const toolPattern = /TOOL_START\s*([\s\S]*?)\s*TOOL_END/g;
+        let match;
+        
+        while ((match = toolPattern.exec(content)) !== null) {
+            try {
+                const toolData = this.parseFlexibleJson(match[1].trim());
+                if (toolData && toolData.name && toolData.arguments) {
+                    commands.push({
+                        jsonrpc: '2.0',
+                        method: toolData.name,
+                        params: toolData.arguments
+                    });
+                }
+            } catch (error) {
+                console.warn('[ChatToolsRegistry] Failed to parse TOOL block:', match[1], error);
+            }
+        }
+        
+        // Parse JSON-RPC code blocks
+        const jsonRpcPattern = /```json-rpc\s*([\s\S]*?)\s*```/g;
+        
+        while ((match = jsonRpcPattern.exec(content)) !== null) {
+            try {
+                const command = JSON.parse(match[1]);
+                if (this.isValidJsonRpc(command)) {
+                    commands.push(command);
+                }
+            } catch (error) {
+                console.warn('[ChatToolsRegistry] Failed to parse JSON-RPC block:', match[1], error);
+            }
+        }
+        
+        return commands;
+    }
+
+    /**
+     * Parse JSON with flexible formatting (supports JavaScript object literals)
+     * @param {string} text - Text to parse
+     * @returns {Object|null} Parsed object or null if parsing fails
+     */
+    parseFlexibleJson(text) {
+        try {
+            return JSON.parse(text);
+        } catch (e) {
+            try {
+                return Function('"use strict"; return (' + text + ')')();
+            } catch (e2) {
+                console.warn('[ChatToolsRegistry] Failed to parse flexible JSON:', text, e2);
+                return null;
+            }
+        }
+    }
+
+    /**
+     * Validate JSON-RPC 2.0 command format
+     * @param {Object} command - Command to validate
+     * @returns {boolean} True if valid JSON-RPC 2.0 command
+     */
+    isValidJsonRpc(command) {
+        return command && 
+               command.jsonrpc === '2.0' && 
+               typeof command.method === 'string';
+    }
+
+    /**
      * Remove a tool
      * @param {string} name - Tool name
      * @returns {boolean} True if tool was removed
