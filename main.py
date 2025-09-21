@@ -5,6 +5,8 @@ from pydantic import BaseModel
 from typing import List, Optional
 from contextlib import asynccontextmanager
 import uvicorn
+import os
+from pathlib import Path
 
 # Import web routes
 from api.webroutes import router as web_router
@@ -34,6 +36,22 @@ async def lifespan(app: FastAPI):
     await otel_cleanup()
     print("✅ Cleanup completed")
 
+
+# Load .env from project root if available (optional)
+# If python-dotenv is installed this will populate os.environ from the .env file.
+try:
+    env_path = Path(__file__).parent / ".env"
+    if env_path.exists():
+        try:
+            from dotenv import load_dotenv
+            load_dotenv(dotenv_path=env_path)
+            print(f"Loaded environment variables from {env_path}")
+        except Exception as e:
+            # python-dotenv not installed or failed to load; continue without failing.
+            print(f"python-dotenv not available or failed to load .env: {e}")
+except Exception:
+    # Keep main resilient to any unexpected environment loading errors
+    pass
 
 # Create FastAPI instance with lifespan
 app = FastAPI(
