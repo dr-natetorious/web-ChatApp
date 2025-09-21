@@ -429,6 +429,30 @@ async def health_check() -> Dict[str, Any]:
         }
 
 
+@server.tool()
+async def get_snowflake_status(_auth_token: Optional[str] = None, _username: Optional[str] = None, _password: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Simple test tool to validate local in-process Snowflake tooling.
+
+    Returns a small hello payload and echoes whether auth info was provided
+    (either from environment variables or injected by the caller).
+    """
+    try:
+        token = _auth_token or os.getenv('SNOWFLAKE_TOKEN')
+        username = _username or os.getenv('SNOWFLAKE_USERNAME')
+        password = _password or os.getenv('SNOWFLAKE_PASSWORD')
+
+        return {
+            "success": True,
+            "message": "Hello from local Snowflake tool",
+            "token_present": bool(token),
+            "username_present": bool(username and password)
+        }
+    except Exception as e:
+        logger.error(f"get_snowflake_status failed: {e}")
+        return {"success": False, "error": str(e)}
+
+
 # Cleanup function for server shutdown
 async def cleanup():
     """Clean up resources when server shuts down"""

@@ -1606,7 +1606,6 @@ chat-resizer {
     max-height: 500px;
     overflow-y: auto;
     color: #1e293b !important;
-    padding: 0 !important;
 }
 
 .policy-options-menu .dropdown-item {
@@ -1649,33 +1648,17 @@ chat-resizer {
     justify-content: space-between;
 }
 
-/* Service item headers (for individual options) - FLUSH LEFT */
+/* Service item headers (for individual options) */
 .policy-options-menu .service-item {
     color: #374151 !important;
     font-size: 0.875rem;
     background-color: white;
-    border-radius: 0;
-    margin: 0 !important;
-    padding: 8px 12px !important;
+    border-radius: 6px;
+    margin: 2px 8px;
+    padding: 6px 12px;
     display: flex;
     align-items: center;
-    justify-content: flex-start;
     gap: 12px;
-}
-
-/* Override ALL Bootstrap list item padding */
-.policy-options-menu li {
-    padding: 0 !important;
-    margin: 0 !important;
-    list-style: none !important;
-}
-
-/* Override Bootstrap px-3 class completely */
-.policy-options-menu .px-3 {
-    padding-left: 0 !important;
-    padding-right: 0 !important;
-    padding-top: 0 !important;
-    padding-bottom: 0 !important;
 }
 
 /* Checkbox styling inside dropdown */

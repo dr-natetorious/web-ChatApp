@@ -24,10 +24,14 @@ from core.models import (
     ChatCompletionStreamChoice,
     ChatCompletionStreamChoiceDelta
 )
+from core.models import Tool
 from core.llm import create_llm
-from core.utils import parse_tool_call, estimate_tokens
+from core.utils import parse_tool_call, parse_server_call, estimate_tokens
 from dependencies.policies import policy_dependency
-from services.policy import OperationToolingPolicy
+from tools.policy import OperationToolingPolicy
+from tools.toolbelt import get_toolbelt
+from tools.databricks import server as databricks_server
+from tools.snowflake import server as snowflake_server
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -77,6 +81,18 @@ async def stream_chat_completion(
         temperature = request.temperature or 0.7
         top_p = request.top_p or 1.0
         
+        # Inject server-side tools (server.*) using the Toolbelt
+        try:
+            toolbelt = get_toolbelt(operation_policy)
+            server_tools = toolbelt.available_tools()
+            if server_tools:
+                tools_list = request.tools or []
+                # rename server tools to server.<name> already done by toolbelt
+                tools_list.extend(server_tools)
+                request.tools = tools_list
+        except Exception:
+            logger.debug("Failed to inject server-side tools; continuing without them")
+
         # Format messages using LLM-specific logic (same as non-streaming)
         payload = llm.format_messages(
             request.messages, 
@@ -146,21 +162,124 @@ async def stream_chat_completion(
                     
                     # Send content chunk
                     if content:
-                        logger.debug(f"Streaming content: {repr(content)}")
-                        chunk_response = ChatCompletionStreamResponse(
-                            id=completion_id,
-                            object="chat.completion.chunk",
-                            created=created,
-                            model=request.model,
-                            choices=[
-                                ChatCompletionStreamChoice(
-                                    index=0,
-                                    delta=ChatCompletionStreamChoiceDelta(content=content),
-                                    finish_reason=None
+                        # First check for SERVER_START blocks
+                        server_call = parse_server_call(content)
+                        if server_call and server_call.get('function', {}).get('name'):
+                            tool_full = server_call['function']['name']
+                            tool_name = tool_full
+                            args_json = server_call['function'].get('arguments', '{}')
+                            try:
+                                args = json.loads(args_json)
+                            except Exception:
+                                args = {}
+
+                            # Execute the server-side tool via toolbelt
+                            try:
+                                toolbelt = get_toolbelt(operation_policy)
+                                # strip any 'server.' prefix when calling execute_tool
+                                if tool_name.startswith('server.'):
+                                    exec_name = tool_name.split('.', 1)[1]
+                                else:
+                                    exec_name = tool_name
+                                result = await toolbelt.execute_tool(exec_name, args)
+                            except Exception as e:
+                                result = {"success": False, "error": str(e)}
+
+                            # Stream back SERVER_TOOL_RESULT block with the result
+                            server_result_block = f"SERVER_TOOL_RESULT\n{json.dumps(result)}\nSERVER_TOOL_RESULT_END"
+                            logger.debug(f"Streaming server-tool-result block: {server_result_block}")
+                            chunk_response = ChatCompletionStreamResponse(
+                                id=completion_id,
+                                object="chat.completion.chunk",
+                                created=created,
+                                model=request.model,
+                                choices=[
+                                    ChatCompletionStreamChoice(
+                                        index=0,
+                                        delta=ChatCompletionStreamChoiceDelta(content=server_result_block),
+                                        finish_reason=None
+                                    )
+                                ]
+                            )
+                            yield f"data: {chunk_response.model_dump_json()}\n\n"
+
+                            # Append a system message with the server tool result and reprompt the model
+                            request.messages.append(ChatMessage(role='system', content=f"SERVER_TOOL_RESULT:\n{json.dumps(result)}\nSERVER_TOOL_RESULT_END"))
+
+                            # Re-create payload and call Bedrock again to continue processing with the tool result included
+                            payload = llm.format_messages(
+                                request.messages,
+                                max_tokens,
+                                temperature,
+                                top_p,
+                                request.stop,
+                                request.tools
+                            )
+
+                            logger.debug("Re-invoking model with tool result appended to messages")
+                            response = bedrock_client.invoke_model_with_response_stream(
+                                modelId=llm.model_id,
+                                body=json.dumps(payload),
+                                contentType="application/json",
+                                accept="application/json"
+                            )
+                            # restart streaming loop with the new response
+                            completion_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
+                            created = int(time.time())
+                            continue
+
+                        # If no server call, check for regular TOOL_START calls
+                        parsed = parse_tool_call(content)
+                        if parsed and parsed.get('function', {}).get('name', ''):
+                            # existing behavior for client-side TOOL_START handling
+                            func_name = parsed['function']['name']
+                            if func_name.startswith('databricks.'):
+                                _, tool_name = func_name.split('.', 1)
+                                args_json = parsed['function'].get('arguments', '{}')
+                                try:
+                                    args = json.loads(args_json)
+                                except Exception:
+                                    args = {}
+                                try:
+                                    toolbelt_local = get_toolbelt(operation_policy)
+                                    # For client-side databricks.* calls, map to server function name
+                                    result = await toolbelt_local.execute_tool(tool_name, args)
+                                except Exception as e:
+                                    result = {"success": False, "error": str(e)}
+
+                                used_block = f"TOOL_USED_START\n{json.dumps(result)}\nTOOL_USED_END"
+                                logger.debug(f"Streaming tool-used block: {used_block}")
+                                chunk_response = ChatCompletionStreamResponse(
+                                    id=completion_id,
+                                    object="chat.completion.chunk",
+                                    created=created,
+                                    model=request.model,
+                                    choices=[
+                                        ChatCompletionStreamChoice(
+                                            index=0,
+                                            delta=ChatCompletionStreamChoiceDelta(content=used_block),
+                                            finish_reason=None
+                                        )
+                                    ]
                                 )
-                            ]
-                        )
-                        yield f"data: {chunk_response.model_dump_json()}\n\n"
+                                yield f"data: {chunk_response.model_dump_json()}\n\n"
+                            else:
+                                # not a databricks client tool; just forward content
+                                logger.debug(f"Streaming content: {repr(content)}")
+                                chunk_response = ChatCompletionStreamResponse(
+                                    id=completion_id,
+                                    object="chat.completion.chunk",
+                                    created=created,
+                                    model=request.model,
+                                    choices=[
+                                        ChatCompletionStreamChoice(
+                                            index=0,
+                                            delta=ChatCompletionStreamChoiceDelta(content=content),
+                                            finish_reason=None
+                                        )
+                                    ]
+                                )
+                                yield f"data: {chunk_response.model_dump_json()}\n\n"
                     
                     # Handle completion
                     if finish_reason:

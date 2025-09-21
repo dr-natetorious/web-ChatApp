@@ -59,15 +59,18 @@ class SnowflakeAuthentication:
             'User-Agent': 'ChatApp-SnowflakeCortex/1.0'
         }
         
+        # Snowflake SQL API expects token-based authentication. Prefer an
+        # OAuth/service token. Username/password basic auth is not supported
+        # for the HTTP SQL API in many deployments; require a token and
+        # provide clear errors otherwise.
         if self.token:
             headers['Authorization'] = f'Bearer {self.token}'
         elif self._session_token:
-            headers['Authorization'] = f'Snowflake Token="{self._session_token}"'
-        elif self.username and self.password:
-            # Basic auth for initial authentication
-            auth_string = f"{self.username}:{self.password}"
-            encoded_auth = base64.b64encode(auth_string.encode()).decode()
-            headers['Authorization'] = f'Basic {encoded_auth}'
+            # If we have a session token (obtained via prior auth flow), use it.
+            headers['Authorization'] = f'Bearer {self._session_token}'
+        else:
+            # No token available; raise a helpful error so callers can surface it.
+            raise ValueError('Snowflake token not configured. Set SNOWFLAKE_TOKEN in the environment or provide a valid token.')
             
         return headers
     
