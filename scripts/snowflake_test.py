@@ -4,7 +4,7 @@ import json
 # Your Snowflake configuration
 ACCOUNT_IDENTIFIER = "dbuvyje-uac93388.snowflakecomputing.com"
 USERNAME = "NATEBACHMEIER"
-PAT_TOKEN = "eyJraWQiOiI0MzQzNzEyNTYzMjUiLCJhbGciOiJFUzI1NiJ9.eyJwIjoiMTY5Njc2MjYyODoxNjk2NzYyNjI4IiwiaXNzIjoiU0Y6MTA1NiIsImV4cCI6MTc5MDAwNDAzM30.sFCA0DQcADPs_fHdusiaLnT8ywI_QnMrwDpirhZ7FZiIBgjIFBgE59u9mC8ByN4UTZr7BQu1yfShIHI6wXxDmw"
+PAT_TOKEN = ""
 
 def test_pat_authentication():
     """Test PAT token authentication with Snowflake REST API"""

@@ -27,7 +27,7 @@ from core.models import (
 from core.models import Tool
 from core.llm import create_llm
 from core.utils import parse_tool_call, parse_server_call, estimate_tokens
-from dependencies.policies import policy_dependency
+from api.dependencies import policy_dependency
 from tools.policy import OperationToolingPolicy
 from tools.toolbelt import get_toolbelt
 from tools.databricks import server as databricks_server

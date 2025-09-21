@@ -11,7 +11,7 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
 
-from dependencies.policies import policy_dependency
+from api.dependencies import policy_dependency
 from tools.policy import OperationToolingPolicy, DatabricksPolicy, SnowflakePolicy
 
 # Create router
