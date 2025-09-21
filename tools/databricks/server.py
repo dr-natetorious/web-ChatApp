@@ -2,7 +2,6 @@
 FastMCP 2 server interface for Databricks Genie operations (Local Transport)
 """
 import os
-import asyncio
 from typing import Dict, Any, List, Optional
 import logging
 from .client import DatabricksGenieClient, DatabricksAuthentication
@@ -278,14 +277,17 @@ async def health_check() -> Dict[str, Any]:
         {"success": true, "status": "healthy", "timestamp": "2024-01-01T12:00:00Z"}
     """
     try:
-        client = await get_genie_client()
-        is_healthy = await client.health_check()
-        
+        # Delegate to the richer status checker which performs a lightweight
+        # operational check (list spaces) and returns structured info.
+        status = await get_databricks_status()
+
+        # Normalize into a health-like response
+        api_ok = bool(status.get('success'))
         return {
-            "success": True,
-            "status": "healthy" if is_healthy else "unhealthy",
-            "api_accessible": is_healthy,
-            "timestamp": "2024-01-01T12:00:00Z"  # You might want to use actual timestamp
+            "success": api_ok,
+            "status": "healthy" if api_ok else "unhealthy",
+            "api_accessible": api_ok,
+            "details": status
         }
         
     except Exception as e:
@@ -311,12 +313,31 @@ async def get_databricks_status(_auth_token: Optional[str] = None, _workspace_ur
         token = _auth_token or os.getenv('DATABRICKS_TOKEN')
         workspace = _workspace_url or os.getenv('DATABRICKS_WORKSPACE_URL')
 
-        return {
-            "success": True,
-            "message": "Hello from local Databricks tool",
-            "token_present": bool(token),
-            "workspace_url": workspace or None
-        }
+        if not token or not workspace:
+            return {"success": False, "error": "Missing Databricks token or workspace URL in environment or args"}
+
+        auth = DatabricksAuthentication(token=token, workspace_url=workspace)
+        client = DatabricksGenieClient(auth=auth)
+        await client.connect()
+        try:
+            # List spaces as a lightweight connectivity check
+            spaces = await client.list_spaces()
+            # spaces may be a dict with 'spaces' key
+            count = None
+            if isinstance(spaces, dict):
+                if 'spaces' in spaces and isinstance(spaces['spaces'], list):
+                    count = len(spaces['spaces'])
+            await client.close()
+            return {
+                "success": True,
+                "message": "Connected to Databricks Genie",
+                "spaces_count": count,
+                "spaces": spaces
+            }
+        except Exception as e:
+            await client.close()
+            logger.exception('Databricks client operation failed')
+            return {"success": False, "error": str(e)}
     except Exception as e:
         logger.error(f"get_databricks_status failed: {e}")
         return {"success": False, "error": str(e)}
@@ -335,7 +356,8 @@ async def cleanup_databricks_service():
 async def initialize_databricks_service():
     """Initialize the Databricks service for local use"""
     try:
-        client = await get_genie_client()
+        # Ensure client initialization; avoid assigning to a local variable
+        await get_genie_client()
         logger.info("Databricks Genie service initialized for local transport")
         return True
     except Exception as e:

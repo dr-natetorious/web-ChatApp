@@ -2,7 +2,6 @@
 FastMCP 2 server interface for Snowflake Cortex operations (Local Transport)
 """
 import os
-import asyncio
 from typing import Dict, Any, List, Optional
 import logging
 from .client import SnowflakeCortexClient, SnowflakeAuthentication
@@ -404,17 +403,16 @@ async def health_check() -> Dict[str, Any]:
         {"success": true, "status": "healthy", "account": "myaccount"}
     """
     try:
-        client = await get_cortex_client()
-        is_healthy = await client.health_check()
-        
+        # Delegate to the richer status checker which performs an operational
+        # connectivity check (execute a simple SQL) and returns structured info.
+        status = await get_snowflake_status()
+        api_ok = bool(status.get('success'))
+        # Normalize into a health-like response
         return {
-            "success": True,
-            "status": "healthy" if is_healthy else "unhealthy",
-            "api_accessible": is_healthy,
-            "account": client.auth.account,
-            "warehouse": client.auth.warehouse,
-            "database": client.auth.database,
-            "schema": client.auth.schema
+            "success": api_ok,
+            "status": "healthy" if api_ok else "unhealthy",
+            "api_accessible": api_ok,
+            "details": status
         }
         
     except Exception as e:
@@ -436,16 +434,53 @@ async def get_snowflake_status(_auth_token: Optional[str] = None, _username: Opt
     (either from environment variables or injected by the caller).
     """
     try:
+        # Resolve credentials from injected args or environment
         token = _auth_token or os.getenv('SNOWFLAKE_TOKEN')
-        username = _username or os.getenv('SNOWFLAKE_USERNAME')
-        password = _password or os.getenv('SNOWFLAKE_PASSWORD')
+        account = os.getenv('SNOWFLAKE_ACCOUNT')
+        warehouse = os.getenv('SNOWFLAKE_WAREHOUSE')
+        database = os.getenv('SNOWFLAKE_DATABASE')
+        schema = os.getenv('SNOWFLAKE_SCHEMA', 'PUBLIC')
 
-        return {
-            "success": True,
-            "message": "Hello from local Snowflake tool",
-            "token_present": bool(token),
-            "username_present": bool(username and password)
-        }
+        if not account:
+            return {"success": False, "error": "Missing SNOWFLAKE_ACCOUNT in environment"}
+
+        if not token:
+            return {"success": False, "error": "Snowflake requires a bearer token for the SQL API. Set SNOWFLAKE_TOKEN in the environment."}
+
+        # Construct auth using the bearer token and account details
+        auth = SnowflakeAuthentication(
+            account=account,
+            token=token,
+            warehouse=warehouse,
+            database=database,
+            schema=schema
+        )
+        client = SnowflakeCortexClient(auth=auth)
+        await client.connect()
+        try:
+            # Execute a simple CURRENT_VERSION() as a connectivity check
+            result = await client.execute_custom_sql("SELECT CURRENT_VERSION() as version;")
+            await client.close()
+            return {
+                "success": True,
+                "message": "Connected to Snowflake Cortex",
+                "result": result
+            }
+        except Exception as e:
+            # If the primary query fails, attempt a fallback
+            logger.warning(f"Primary connectivity query failed, attempting fallback: {e}")
+            try:
+                result2 = await client.execute_custom_sql("SHOW USERS;")
+                await client.close()
+                return {
+                    "success": True,
+                    "message": "Connected to Snowflake Cortex (fallback)",
+                    "result": result2
+                }
+            except Exception as e2:
+                await client.close()
+                logger.exception('Snowflake client operation failed (fallback)')
+                return {"success": False, "error": str(e2)}
     except Exception as e:
         logger.error(f"get_snowflake_status failed: {e}")
         return {"success": False, "error": str(e)}
@@ -473,7 +508,7 @@ async def cleanup_snowflake_service():
 async def initialize_snowflake_service():
     """Initialize the Snowflake service for local use"""
     try:
-        client = await get_cortex_client()
+        await get_cortex_client()
         logger.info("Snowflake Cortex service initialized for local transport")
         return True
     except Exception as e:

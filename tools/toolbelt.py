@@ -6,112 +6,16 @@ Start with two hardcoded tools: get_databricks_status and get_snowflake_status.
 """
 from typing import List, Dict, Any, Optional
 import logging
-import os
-from tools.databricks.client import DatabricksGenieClient, DatabricksAuthentication
-from tools.snowflake.client import SnowflakeCortexClient, SnowflakeAuthentication
 from core.models import Tool
 
 # Import the server modules themselves so we can access the tool functions defined
 # Use distinct names (module suffix) to avoid later name collisions with the
 # `server` objects imported by the LocalServicesManager section below.
-# Hardcoded local test implementations for server-side tools.
-# These allow in-process execution without importing the FastMCP server modules.
-async def get_databricks_status(_auth_token: Optional[str] = None, _workspace_url: Optional[str] = None) -> Dict[str, Any]:
-    """
-    Use the Databricks Genie client to perform a simple operation (list spaces)
-    to prove we can connect. Auth and workspace URL are taken from the provided
-    args or environment variables.
-    """
-    try:
-        token = os.getenv('DATABRICKS_TOKEN')
-        workspace = os.getenv('DATABRICKS_WORKSPACE_URL')
-
-        if not token or not workspace:
-            return {"success": False, "error": "Missing Databricks token or workspace URL in environment or args"}
-
-        auth = DatabricksAuthentication(token=token, workspace_url=workspace)
-        client = DatabricksGenieClient(auth=auth)
-        await client.connect()
-        try:
-            # List spaces as a lightweight connectivity check
-            spaces = await client.list_spaces()
-            # spaces may be a dict with 'spaces' key
-            count = None
-            if isinstance(spaces, dict):
-                if 'spaces' in spaces and isinstance(spaces['spaces'], list):
-                    count = len(spaces['spaces'])
-            await client.close()
-            return {
-                "success": True,
-                "message": "Connected to Databricks Genie",
-                "spaces_count": count,
-                "spaces": spaces
-            }
-        except Exception as e:
-            await client.close()
-            logger.exception('Databricks client operation failed')
-            return {"success": False, "error": str(e)}
-    except Exception as e:
-        logger.exception('get_databricks_status top-level failure')
-        return {"success": False, "error": str(e)}
-
-
-async def get_snowflake_status(_auth_token: Optional[str] = None, _username: Optional[str] = None, _password: Optional[str] = None) -> Dict[str, Any]:
-    """
-    Use the Snowflake Cortex client to execute a simple query (SELECT 1)
-    to prove connectivity. Credentials are taken from args or environment.
-    """
-    try:
-        # Snowflake SQL API uses bearer token authentication. Ignore username/password.
-        token =  os.getenv('SNOWFLAKE_TOKEN')
-        account = os.getenv('SNOWFLAKE_ACCOUNT')
-        warehouse = os.getenv('SNOWFLAKE_WAREHOUSE')
-        database = os.getenv('SNOWFLAKE_DATABASE')
-        schema = os.getenv('SNOWFLAKE_SCHEMA', 'PUBLIC')
-
-        if not account:
-            return {"success": False, "error": "Missing SNOWFLAKE_ACCOUNT in environment"}
-
-        if not token:
-            return {"success": False, "error": "Snowflake requires a bearer token for the SQL API. Set SNOWFLAKE_TOKEN in the environment."}
-
-        # Construct auth using only the bearer token and account details
-        auth = SnowflakeAuthentication(
-            account=account,
-            token=token,
-            warehouse=warehouse,
-            database=database,
-            schema=schema
-        )
-        client = SnowflakeCortexClient(auth=auth)
-        await client.connect()
-        try:
-            # Execute a simple SELECT CURRENT_VERSION() as a connectivity check
-            result = await client.execute_custom_sql("SELECT CURRENT_VERSION() as version;")
-            await client.close()
-            return {
-                "success": True,
-                "message": "Connected to Snowflake Cortex",
-                "result": result
-            }
-        except Exception as e:
-            # If SELECT 1 fails, try a fallback 'SHOW USERS' to demonstrate a different API path
-            logger.warning(f"SELECT 1 failed, attempting SHOW USERS fallback: {e}")
-            try:
-                result2 = await client.execute_custom_sql("SHOW USERS;")
-                await client.close()
-                return {
-                    "success": True,
-                    "message": "Connected to Snowflake Cortex (fallback)",
-                    "result": result2
-                }
-            except Exception as e2:
-                await client.close()
-                logger.exception('Snowflake client operation failed (fallback)')
-                return {"success": False, "error": str(e2)}
-    except Exception as e:
-        logger.exception('get_snowflake_status top-level failure')
-        return {"success": False, "error": str(e)}
+# The lightweight status helpers were moved to their respective service
+# modules (tools.databricks.server and tools.snowflake.server) so that
+# the concrete connectivity checks run in the service modules where the
+# service clients and lifecycle are managed. Keeping them here caused
+# duplicate definitions and import cycles.
 
 logger = logging.getLogger(__name__)
 
@@ -135,7 +39,7 @@ class Toolbelt:
         # As a fallback, discover functions directly in server modules
         if not tools:
             import inspect
-            from typing import Dict as _Dict, Any as _Any
+            from typing import Any as _Any
 
             service_modules = [
                 ("databricks", "tools.databricks.server"),

@@ -3,8 +3,6 @@ Databricks Genie Client for async operations
 """
 import httpx
 from typing import Optional, Dict, Any, List
-from datetime import datetime
-import asyncio
 import logging
 
 logger = logging.getLogger(__name__)

@@ -2,12 +2,10 @@
 Snowflake Cortex Client for async operations
 """
 import httpx
-from typing import Optional, Dict, Any, List, Union
-from datetime import datetime
-import asyncio
+from typing import Optional, Dict, Any
 import logging
 import json
-import base64
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -19,8 +17,6 @@ class SnowflakeAuthentication:
     
     def __init__(self, 
                  account: Optional[str] = None,
-                 username: Optional[str] = None, 
-                 password: Optional[str] = None,
                  token: Optional[str] = None,
                  warehouse: Optional[str] = None,
                  database: Optional[str] = None,
@@ -38,8 +34,6 @@ class SnowflakeAuthentication:
             schema: Default schema
         """
         self.account = account
-        self.username = username
-        self.password = password
         self.token = token
         self.warehouse = warehouse
         self.database = database
