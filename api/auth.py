@@ -15,7 +15,7 @@ from api.dependencies import policy_dependency
 from tools.policy import OperationToolingPolicy, DatabricksPolicy, SnowflakePolicy
 
 # Create router
-router = APIRouter(tags=["auth"])
+router = APIRouter()
 
 # Basic auth for username/password endpoint
 security = HTTPBasic()

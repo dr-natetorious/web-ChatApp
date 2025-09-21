@@ -10,6 +10,8 @@ console.log('[ChitChat] Main file loading...');
 import './messages.js';
 import './chitchat-components.js';
 import './prompt-components.js';
+// Import OTLC class so the component can instantiate a local instance (no globals)
+import { OTLC } from './otlc.js';
 
 console.log('[ChitChat] All imports completed');
 
@@ -86,21 +88,42 @@ class ChitChatComponent extends HTMLElement {
     // This ensures clean separation of concerns and maintainability
 
     initObservability() {
-        // Create lightweight logging and metrics fallback
-        return {
-            startSpan: (name, attrs = {}) => ({ 
-                setStatus: () => {}, 
-                addEvent: () => {}, 
-                end: () => {} 
-            }),
-            counter: (name, value = 1) => {},
-            gauge: (name, value) => {},
-            histogram: (name, value) => {},
-            debug: (msg, attrs = {}) => console.debug(`[ChitChat] ${msg}`, attrs),
-            info: (msg, attrs = {}) => console.info(`[ChitChat] ${msg}`, attrs),
-            warn: (msg, attrs = {}) => console.warn(`[ChitChat] ${msg}`, attrs),
-            error: (msg, attrs = {}) => console.error(`[ChitChat] ${msg}`, attrs)
+        // Instantiate a component-local OTLC instance. Fail-fast if OTLC isn't present.
+        if (typeof window === 'undefined') {
+            throw new Error('OTLC requires a browser environment');
+        }
+
+        // Ensure OTLC class is available via ES module import.
+        if (!OTLC || typeof OTLC !== 'function') {
+            throw new Error('OTLC is not available. Ensure js/otlc.js is present and exports OTLC.');
+        }
+
+        const cfg = {
+            serviceName: 'web-chatapp-chitchat',
+            version: '1.0.0',
+            environment: window.location && window.location.hostname === 'localhost' ? 'development' : 'production',
+            // server receiver that accepts OTLP-shaped payloads
+            endpoint: '/v1',
+            enableConsole: true,
+            enableMetrics: true,
+            enableTraces: true,
+            enableLogs: true
         };
+
+        // Directly instantiate OTLC for this component (component owns lifecycle)
+        const otlc = new OTLC(cfg);
+
+        // Start periodic export in production-like environments
+        if (cfg.environment === 'production') {
+            try {
+                otlc.startPeriodicExport();
+            } catch (e) {
+                // non-fatal: continue without periodic export
+                console.warn('Failed to start OTLC periodic export:', e && e.message ? e.message : e);
+            }
+        }
+
+        return otlc;
     }
 
     detectScreenType() {

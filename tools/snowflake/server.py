@@ -44,8 +44,6 @@ async def get_cortex_client() -> SnowflakeCortexClient:
         # Initialize authentication and client
         auth = SnowflakeAuthentication(
             account=account,
-            username=username,
-            password=password,
             token=token,
             warehouse=warehouse,
             database=database,
@@ -426,7 +424,7 @@ async def health_check() -> Dict[str, Any]:
 
 
 @tool()
-async def get_snowflake_status(_auth_token: Optional[str] = None, _username: Optional[str] = None, _password: Optional[str] = None) -> Dict[str, Any]:
+async def get_snowflake_status() -> Dict[str, Any]:
     """
     Simple test tool to validate local in-process Snowflake tooling.
 
@@ -435,7 +433,7 @@ async def get_snowflake_status(_auth_token: Optional[str] = None, _username: Opt
     """
     try:
         # Resolve credentials from injected args or environment
-        token = _auth_token or os.getenv('SNOWFLAKE_TOKEN')
+        token = os.getenv('SNOWFLAKE_TOKEN')
         account = os.getenv('SNOWFLAKE_ACCOUNT')
         warehouse = os.getenv('SNOWFLAKE_WAREHOUSE')
         database = os.getenv('SNOWFLAKE_DATABASE')

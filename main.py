@@ -152,6 +152,8 @@ from api.openai import router as openai_router
 # Import Auth router
 from api.auth import router as auth_router
 
+# Import OTEL router
+from api.otel import otel_router as otel_router  
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -224,6 +226,9 @@ async def otel_status():
 # Include OpenAI-compatible API router
 app.include_router(openai_router, prefix='/v1', tags=["OpenAI API"])
 
+# Include the OTEL router for metrics and traces
+app.include_router(otel_router, tags=["OpenTelemetry"])
+
 # Include Auth router
 app.include_router(auth_router, prefix='/auth', tags=["Authentication"])
 
@@ -238,16 +243,6 @@ app.mount("/css", StaticFiles(directory="css"), name="stylesheets")
 async def health_check():
     return {"status": "healthy"}
 
-
-# Temporary smoke test route to generate an outgoing httpx client span
-import httpx
-
-
-@app.get("/smoke/httpbin")
-async def smoke_httpbin():
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        r = await client.get("https://httpbin.org/get")
-    return {"status": r.status_code, "url": str(r.url)}
 
 # Run the application
 if __name__ == "__main__":

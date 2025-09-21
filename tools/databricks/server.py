@@ -301,7 +301,7 @@ async def health_check() -> Dict[str, Any]:
 
 
 @tool()
-async def get_databricks_status(_auth_token: Optional[str] = None, _workspace_url: Optional[str] = None) -> Dict[str, Any]:
+async def get_databricks_status() -> Dict[str, Any]:
     """
     Simple test tool to validate local in-process Databricks tooling.
 
@@ -310,8 +310,8 @@ async def get_databricks_status(_auth_token: Optional[str] = None, _workspace_ur
     """
     try:
         # Prefer injected values if provided, otherwise fall back to environment
-        token = _auth_token or os.getenv('DATABRICKS_TOKEN')
-        workspace = _workspace_url or os.getenv('DATABRICKS_WORKSPACE_URL')
+        token = os.getenv('DATABRICKS_TOKEN')
+        workspace = os.getenv('DATABRICKS_WORKSPACE_URL')
 
         if not token or not workspace:
             return {"success": False, "error": "Missing Databricks token or workspace URL in environment or args"}
