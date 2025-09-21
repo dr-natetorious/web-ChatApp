@@ -5,13 +5,11 @@ import os
 import asyncio
 from typing import Dict, Any, List, Optional
 import logging
-from fastmcp import FastMCP
 from .client import DatabricksGenieClient, DatabricksAuthentication
+from tools import tool
 
 logger = logging.getLogger(__name__)
 
-# Initialize FastMCP server for local transport
-server = FastMCP("Databricks Genie")
 
 # Global client instance
 _genie_client: Optional[DatabricksGenieClient] = None
@@ -47,7 +45,7 @@ async def get_genie_client() -> DatabricksGenieClient:
     return _genie_client
 
 
-@server.tool()
+@tool()
 async def start_conversation(space_id: str, content: str) -> Dict[str, Any]:
     """
     Start a new conversation with Databricks Genie
@@ -85,7 +83,7 @@ async def start_conversation(space_id: str, content: str) -> Dict[str, Any]:
         }
 
 
-@server.tool()
+@tool()
 async def post_message(conversation_id: str, content: str, 
                       attachments: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
     """
@@ -130,7 +128,7 @@ async def post_message(conversation_id: str, content: str,
         }
 
 
-@server.tool()
+@tool()
 async def get_attachment(conversation_id: str, attachment_id: str) -> Dict[str, Any]:
     """
     Retrieve an attachment from a Databricks Genie conversation
@@ -170,7 +168,7 @@ async def get_attachment(conversation_id: str, attachment_id: str) -> Dict[str, 
         }
 
 
-@server.tool()
+@tool()
 async def get_conversation(conversation_id: str) -> Dict[str, Any]:
     """
     Retrieve conversation details and message history
@@ -204,7 +202,7 @@ async def get_conversation(conversation_id: str) -> Dict[str, Any]:
         }
 
 
-@server.tool()
+@tool()
 async def list_spaces() -> Dict[str, Any]:
     """
     List available Databricks Genie spaces
@@ -234,7 +232,7 @@ async def list_spaces() -> Dict[str, Any]:
         }
 
 
-@server.tool()
+@tool()
 async def get_space(space_id: str) -> Dict[str, Any]:
     """
     Get details about a specific Databricks Genie space
@@ -268,7 +266,7 @@ async def get_space(space_id: str) -> Dict[str, Any]:
         }
 
 
-@server.tool()
+@tool()
 async def health_check() -> Dict[str, Any]:
     """
     Check connectivity to Databricks Genie API
@@ -300,7 +298,7 @@ async def health_check() -> Dict[str, Any]:
         }
 
 
-@server.tool()
+@tool()
 async def get_databricks_status(_auth_token: Optional[str] = None, _workspace_url: Optional[str] = None) -> Dict[str, Any]:
     """
     Simple test tool to validate local in-process Databricks tooling.
@@ -345,20 +343,4 @@ async def initialize_databricks_service():
         return False
 
 
-# For local testing only - not exposed to network
-if __name__ == "__main__":
-    # This is for development/testing only
-    # In production, the service is used via local transport
-    import uvicorn
-    
-    # Configure logging
-    logging.basicConfig(level=logging.INFO)
-    logger.warning("Running Databricks service in standalone mode - for testing only!")
-    
-    # Run the server locally for testing
-    uvicorn.run(
-        "services.databricks.server:server",
-        host="127.0.0.1",  # Only localhost
-        port=8001,
-        reload=True
-    )
+# For local testing only - you can import and call individual functions.

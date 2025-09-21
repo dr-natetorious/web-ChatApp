@@ -16,12 +16,10 @@ Environment Variables Required:
 """
 
 from .client import DatabricksGenieClient, DatabricksAuthentication
-from .server import server
 
 __all__ = [
     'DatabricksGenieClient',
-    'DatabricksAuthentication', 
-    'server'
+    'DatabricksAuthentication',
 ]
 
 __version__ = '1.0.0'

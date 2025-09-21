@@ -36,13 +36,13 @@ def run_tool_block(block: str):
 
 def main():
     # Test 1: supported tool single-block (databricks)
-    content_db = 'TOOL_START\n{"name": "server.get_databricks_status", "arguments": {}}\nTOOL_END'
+    content_db = 'TOOL_START\n{"name": "databricks.get_databricks_status", "arguments": {}}\nTOOL_END'
     print('\n=== Test 1: supported tool single-block (databricks) ===')
     run_tool_block(content_db)
 
     # Test 2: supported tool split across chunks (simulate streaming tokens arriving)
     print('\n=== Test 2: supported tool split across chunks (databricks) ===')
-    part1 = 'TOOL_START\n{"name": "server.get_databricks_status", '
+    part1 = 'TOOL_START\n{"name": "databricks.get_databricks_status", '
     part2 = '"arguments": {}}\nTOOL_END'
     combined = part1 + part2
     # Simulate incremental assembly: parsing should only succeed on combined

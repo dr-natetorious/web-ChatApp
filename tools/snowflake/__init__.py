@@ -30,12 +30,10 @@ Cortex Functions Available:
 """
 
 from .client import SnowflakeCortexClient, SnowflakeAuthentication
-from .server import server
 
 __all__ = [
     'SnowflakeCortexClient',
-    'SnowflakeAuthentication', 
-    'server'
+    'SnowflakeAuthentication',
 ]
 
 __version__ = '1.0.0'

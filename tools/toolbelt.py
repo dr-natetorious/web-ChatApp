@@ -123,74 +123,157 @@ class Toolbelt:
 
     def available_tools(self) -> List[Tool]:
         tools: List[Tool] = []
+        # Prefer the centralized builtin toolset provider if available
+        try:
+            import tools as tools_pkg
+            if hasattr(tools_pkg, 'get_builtin_toolset'):
+                for td in tools_pkg.get_builtin_toolset() or []:
+                    tools.append(Tool(type='function', function=td))
+        except Exception:
+            logger.debug('tools.get_builtin_toolset not available')
 
-        # Hardcoded list of tools we want to expose (direct local functions)
-        import inspect
-        from typing import Dict as _Dict, Any as _Any
+        # As a fallback, discover functions directly in server modules
+        if not tools:
+            import inspect
+            from typing import Dict as _Dict, Any as _Any
 
-        for tname, func in [('get_databricks_status', get_databricks_status), ('get_snowflake_status', get_snowflake_status)]:
-            description = (func.__doc__ or '').strip().splitlines()[0] if func and func.__doc__ else ''
+            service_modules = [
+                ("databricks", "tools.databricks.server"),
+                ("snowflake", "tools.snowflake.server")
+            ]
 
-            # Build JSON Schema properties from function signature
-            properties: Dict[str, Dict[str, str]] = {}
-            required: List[str] = []
-            try:
-                sig = inspect.signature(func)
-                for pname, param in sig.parameters.items():
-                    # Skip 'self' if present
-                    if pname == 'self':
+            for service_name, module_path in service_modules:
+                try:
+                    module = __import__(module_path, fromlist=['*'])
+                except Exception as e:
+                    logger.warning(f"Could not import {module_path}: {e}")
+                    continue
+
+                for attr_name in dir(module):
+                    # Skip private attrs
+                    if attr_name.startswith('_'):
                         continue
-                    ann = param.annotation
-                    ptype = 'string'
                     try:
-                        ann_str = str(ann)
-                        if 'Dict' in ann_str or 'dict' in ann_str or 'Any' in ann_str:
-                            ptype = 'object'
+                        attr = getattr(module, attr_name)
                     except Exception:
-                        ptype = 'string'
+                        continue
 
-                    properties[pname] = {'type': ptype}
-                    if param.default is inspect._empty:
-                        required.append(pname)
-            except Exception:
-                # Fallback to a generic payload if introspection fails
-                properties = {'__payload': {'type': 'object'}}
+                    # Identify functions decorated with @tool()
+                    if callable(attr) and getattr(attr, '_is_tool', False):
+                        description = (attr.__doc__ or '').strip().splitlines()[0] if attr and attr.__doc__ else ''
 
-            schema: Dict[str, _Any] = {
-                'type': 'object',
-                'properties': properties
-            }
-            if required:
-                schema['required'] = required
+                        # Build JSON Schema properties from function signature
+                        properties: Dict[str, Dict[str, str]] = {}
+                        required: List[str] = []
+                        try:
+                            sig = inspect.signature(attr)
+                            for pname, param in sig.parameters.items():
+                                if pname == 'self':
+                                    continue
+                                ann = param.annotation
+                                ptype = 'string'
+                                try:
+                                    ann_str = str(ann)
+                                    if 'Dict' in ann_str or 'dict' in ann_str or 'Any' in ann_str:
+                                        ptype = 'object'
+                                except Exception:
+                                    ptype = 'string'
 
-            tools.append(Tool(type='function', function={
-                'name': f'server.{tname}',
-                'description': description,
-                'parameters': schema
-            }))
+                                properties[pname] = {'type': ptype}
+                                if param.default is inspect._empty:
+                                    required.append(pname)
+                        except Exception:
+                            properties = {'__payload': {'type': 'object'}}
+
+                        schema: Dict[str, _Any] = {
+                            'type': 'object',
+                            'properties': properties
+                        }
+                        if required:
+                            schema['required'] = required
+
+                        # Tool name follows the server.<function-name> convention
+                        tools.append(Tool(type='function', function={
+                            'name': f'server.{attr_name}',
+                            'description': description,
+                            'parameters': schema
+                        }))
 
         return tools
 
     async def execute_tool(self, tool_name: str, args: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         args = args or {}
-        # Accept either 'server.<name>' or '<name>' from callers
-        if isinstance(tool_name, str) and tool_name.startswith('server.'):
-            tool_name = tool_name.split('.', 1)[1]
+        # Build a name -> call target map from available tools for quick lookup.
+        tools_list = self.available_tools()
+        tool_map = {}
+        for t in tools_list:
+            # t.function can be a dict descriptor (from discovery) or a python callable
+            if isinstance(t.function, dict):
+                tool_map[t.function['name']] = t.function
+            else:
+                # Try to synthesize a name from the function if possible
+                fname = getattr(t.function, '__name__', None)
+                if fname:
+                    tool_map[fname] = t.function
 
-        # Map tool name to the hardcoded local function
-        if tool_name == 'get_databricks_status':
-            func = get_databricks_status
-        elif tool_name == 'get_snowflake_status':
-            func = get_snowflake_status
+        # Accept service-qualified names like 'databricks.<name>' or
+        # legacy underscore-separated names like 'databricks_get_databricks_status'.
+        candidates = [tool_name]
+        if isinstance(tool_name, str) and '_' in tool_name and not ('.' in tool_name):
+            # normalize first underscore to a dot: databricks_get_foo -> databricks.get_foo
+            parts = tool_name.split('_', 1)
+            if len(parts) == 2:
+                candidates.append(f"{parts[0]}.{parts[1]}")
+        if isinstance(tool_name, str) and '.' in tool_name:
+            # also allow the bare function name as a fallback
+            candidates.append(tool_name.split('.', 1)[-1])
         else:
+            candidates.append(tool_name)
+
+        found = None
+        for cand in candidates:
+            if cand in tool_map:
+                found = tool_map[cand]
+                break
+
+        if not found:
+            # Unknown tool
             return {'success': False, 'error': f'Unknown server tool: {tool_name}'}
 
-        if not func:
-            return {'success': False, 'error': f'Tool function not available: {tool_name}'}
+        # If found is a dict descriptor, import and call the actual function from the module
+        if isinstance(found, dict):
+            # found['name'] is like 'databricks.list_spaces'
+            full_name = found['name']
+            try:
+                service, fn = full_name.split('.', 1)
+            except Exception:
+                return {'success': False, 'error': f'Invalid tool name: {full_name}'}
+
+            module_path = f'tools.{service}.server'
+            try:
+                module = __import__(module_path, fromlist=['*'])
+            except Exception as e:
+                logger.exception('Failed to import service module for tool execution')
+                return {'success': False, 'error': str(e)}
+
+            if not hasattr(module, fn):
+                return {'success': False, 'error': f'Tool function {fn} not found in {module_path}'}
+
+            func = getattr(module, fn)
+        else:
+            func = found
 
         try:
-            # call the coroutine directly
-            result = await func(**args)
+            import inspect
+            sig = inspect.signature(func)
+            call_kwargs = {}
+            for pname in sig.parameters.keys():
+                if pname == 'self':
+                    continue
+                if pname in args:
+                    call_kwargs[pname] = args[pname]
+
+            result = await func(**call_kwargs)
             return result
         except Exception as e:
             logger.exception('Server tool execution failed')
@@ -202,384 +285,3 @@ _default_toolbelt = Toolbelt()
 def get_toolbelt(policy=None) -> Toolbelt:
     # For now ignore policy; can be extended
     return _default_toolbelt
-"""
-Local Services Manager for ChatApp with Policy-Based Multi-Tenant Access Control
-
-This module provides a unified interface to access Databricks and Snowflake services
-using local in-process transport with strict policy enforcement for multi-tenant security.
-Each tenant has their own policy defining which services, tools, and resources they can access.
-"""
-
-import asyncio
-import logging
-from typing import Dict, Any, Optional, List
-from datetime import datetime, timezone
-
-# Import service modules for local transport
-from .databricks.server import (
-    server as databricks_server,
-    initialize_databricks_service,
-    cleanup_databricks_service,
-    get_genie_client
-)
-from .snowflake.server import (
-    server as snowflake_server, 
-    initialize_snowflake_service,
-    cleanup_snowflake_service,
-    get_cortex_client
-)
-
-# Import policy system
-from .policy import (
-    OperationToolingPolicy,
-    UnauthorizedOperationError,
-    PolicyValidationError
-)
-
-logger = logging.getLogger(__name__)
-
-# Service status tracking
-_services_status: Dict[str, Dict[str, Any]] = {
-    "databricks": {"initialized": False, "last_check": None, "error": None},
-    "snowflake": {"initialized": False, "last_check": None, "error": None}
-}
-
-
-class LocalServicesManager:
-    """
-    Policy-Aware Local Services Manager for Multi-Tenant Access Control
-    
-    Coordinates Databricks and Snowflake services with strict policy enforcement.
-    Each operation is validated against the tenant's policy before execution.
-    Authentication tokens are tenant-specific with no cross-contamination.
-    """
-    
-    def __init__(self, policy: Optional[OperationToolingPolicy] = None):
-        self._initialized = False
-        self._databricks_available = False
-        self._snowflake_available = False
-        self._policy = policy
-    
-    def set_policy(self, policy: OperationToolingPolicy) -> None:
-        """
-        Set the operation policy for this manager instance
-        
-        Args:
-            policy: OperationToolingPolicy defining tenant permissions
-        """
-        self._policy = policy
-        # Reevaluate service availability based on new policy
-        if self._initialized:
-            self._databricks_available = self._policy.is_service_enabled("databricks")
-            self._snowflake_available = self._policy.is_service_enabled("snowflake")
-    
-    def get_policy(self) -> Optional[OperationToolingPolicy]:
-        """Get the current policy"""
-        return self._policy
-    
-    def _validate_policy_required(self) -> None:
-        """Ensure a policy is set for operations"""
-        if self._policy is None:
-            raise PolicyValidationError("No policy set - operations require tenant policy")
-    
-    async def initialize(self) -> Dict[str, Any]:
-        """
-        Initialize all services for local transport with policy enforcement
-        
-        Returns:
-            Dictionary containing initialization status and available services
-        """
-        if self._initialized:
-            return await self.get_status()
-        
-        logger.info("Initializing local services manager...")
-        
-        # Initialize Databricks service
-        try:
-            await initialize_databricks_service()
-            self._databricks_available = True if self._policy is None else self._policy.is_service_enabled("databricks")
-            _services_status["databricks"]["initialized"] = True
-            _services_status["databricks"]["last_check"] = datetime.now(timezone.utc).isoformat()
-            logger.info("Databricks service initialized successfully")
-        except Exception as e:
-            logger.error(f"Databricks service initialization failed: {e}")
-            _services_status["databricks"]["error"] = str(e)
-            self._databricks_available = False
-        
-        # Initialize Snowflake service  
-        try:
-            await initialize_snowflake_service()
-            self._snowflake_available = True if self._policy is None else self._policy.is_service_enabled("snowflake")
-            _services_status["snowflake"]["initialized"] = True
-            _services_status["snowflake"]["last_check"] = datetime.now(timezone.utc).isoformat()
-            logger.info("Snowflake service initialized successfully")
-        except Exception as e:
-            logger.error(f"Snowflake service initialization failed: {e}")
-            _services_status["snowflake"]["error"] = str(e)
-            self._snowflake_available = False
-        
-        self._initialized = True
-        
-        # Log overall status
-        available_count = sum([self._databricks_available, self._snowflake_available])
-        logger.info(f"Local services initialized: {available_count}/2 services available")
-        
-        return await self.get_status()
-    
-    async def get_status(self) -> Dict[str, Any]:
-        """
-        Get current status of all services with policy information
-        
-        Returns:
-            Dictionary containing service status and policy information
-        """
-        status = {
-            "initialized": self._initialized,
-            "services": _services_status.copy(),
-            "available_services": {
-                "databricks": self._databricks_available,
-                "snowflake": self._snowflake_available
-            },
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }
-        
-        # Add policy information if available
-        if self._policy:
-            status["policy"] = {
-                "enabled_services": self._policy.get_enabled_services()
-            }
-        
-        return status
-    
-    async def call_service_tool(self, service_name: str, tool_name: str, **kwargs) -> Dict[str, Any]:
-        """
-        Call a tool on any service via local transport with policy enforcement
-        
-        Args:
-            service_name: Name of the service ('databricks' or 'snowflake')
-            tool_name: Name of the tool to call
-            **kwargs: Arguments for the tool
-            
-        Returns:
-            Tool execution result
-            
-        Raises:
-            PolicyValidationError: If no policy is set
-            UnauthorizedOperationError: If operation is not allowed by policy
-        """
-        # Validate policy is set
-        self._validate_policy_required()
-        assert self._policy is not None  # For type checker
-        
-        # Validate operation is allowed by policy
-        if not self._policy.validate_operation(service_name, tool_name, **kwargs):
-            raise UnauthorizedOperationError(
-                service=service_name,
-                operation=tool_name,
-                details=f"Operation not permitted by tenant policy"
-            )
-        
-        # Service availability mapping
-        service_availability = {
-            'databricks': self._databricks_available,
-            'snowflake': self._snowflake_available
-        }
-        
-        # Check if service is supported
-        if service_name not in service_availability:
-            return {
-                "success": False,
-                "error": f"Unknown service '{service_name}'. Supported services: {list(service_availability.keys())}",
-                "service": service_name,
-                "tool": tool_name
-            }
-        
-        # Check if service is available
-        if not service_availability[service_name]:
-            return {
-                "success": False,
-                "error": f"{service_name.title()} service not available",
-                "service": service_name,
-                "tool": tool_name
-            }
-        
-        try:
-            # Get authentication token for the service
-            token = self._policy.get_service_token(service_name)
-            if not token:
-                return {
-                    "success": False,
-                    "error": f"No authentication token available for {service_name}",
-                    "service": service_name,
-                    "tool": tool_name
-                }
-            
-            # Inject authentication token and service-specific config into kwargs
-            if service_name == "databricks":
-                kwargs['_auth_token'] = token
-                if self._policy.databricks and self._policy.databricks.workspace_url:
-                    kwargs['_workspace_url'] = self._policy.databricks.workspace_url
-            elif service_name == "snowflake":
-                kwargs['_auth_token'] = token
-                # Also inject account and user for Snowflake
-                if self._policy.snowflake:
-                    kwargs['_account'] = self._policy.snowflake.account
-                    kwargs['_user'] = self._policy.snowflake.user
-            
-            # Import the appropriate server module and call the tool
-            if service_name == 'databricks':
-                from .databricks import server as server_module
-            else:  # snowflake
-                from .snowflake import server as server_module
-            
-            # Get the decorated function directly
-            tool_func = getattr(server_module, tool_name, None)
-            if not tool_func:
-                return {
-                    "success": False,
-                    "error": f"Tool '{tool_name}' not found in {service_name} service",
-                    "service": service_name,
-                    "tool": tool_name
-                }
-            
-            # Call the function directly
-            result = await tool_func(**kwargs)
-            return result
-            
-        except UnauthorizedOperationError as e:
-            logger.warning(f"Unauthorized operation: {e}")
-            return {
-                "success": False,
-                "error": str(e),
-                "service": service_name,
-                "tool": tool_name
-            }
-        except Exception as e:
-            logger.error(f"{service_name.title()} tool {tool_name} failed: {e}")
-            return {
-                "success": False,
-                "error": str(e),
-                "service": service_name,
-                "tool": tool_name
-            }
-    
-    async def list_available_tools(self) -> Dict[str, Any]:
-        """
-        List all available tools across services with policy filtering
-        
-        Returns:
-            Dictionary of available tools organized by service (filtered by policy)
-        """
-        tools = {"databricks": [], "snowflake": []}
-        
-        # Service configuration: name -> (availability_flag, module_name, excluded_functions)
-        services_config = {
-            "databricks": (self._databricks_available, "databricks", ["get_genie_client"]),
-            "snowflake": (self._snowflake_available, "snowflake", ["get_cortex_client"])
-        }
-        
-        import inspect
-        
-        for service_name, (is_available, module_name, excluded_funcs) in services_config.items():
-            tools[service_name] = []
-            
-            if is_available:
-                try:
-                    # Import the server module
-                    if service_name == "databricks":
-                        from .databricks import server as server_module
-                    elif service_name == "snowflake": 
-                        from .snowflake import server as server_module
-                    else:
-                        continue
-                    
-                    # Find all async functions in the module (these are the tools)
-                    members = inspect.getmembers(server_module, inspect.iscoroutinefunction)
-                    all_tools = [name for name, func in members 
-                               if not name.startswith('_') and name not in excluded_funcs]
-                    
-                    # Filter tools based on policy if available
-                    if self._policy:
-                        filtered_tools = []
-                        for tool_name in all_tools:
-                            # Check if this tool is allowed by policy
-                            if self._policy.validate_operation(service_name, tool_name):
-                                filtered_tools.append(tool_name)
-                        tools[service_name] = filtered_tools
-                    else:
-                        tools[service_name] = all_tools
-                        
-                except Exception as e:
-                    logger.warning(f"Could not get {service_name} tools: {e}")
-        
-        result = {
-            "services": tools,
-            "total_tools": sum(len(service_tools) for service_tools in tools.values()),
-            "available_services": list(k for k, v in tools.items() if v),
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }
-        
-        # Add policy information if available
-        if self._policy:
-            result["policy_info"] = {
-                "filtered_by_policy": True
-            }
-        
-        return result
-    
-    async def cleanup(self):
-        """Clean up all service resources"""
-        logger.info("Cleaning up local transport services...")
-        
-        try:
-            await cleanup_databricks_service()
-            logger.info("Databricks service cleanup completed")
-        except Exception as e:
-            logger.error(f"Databricks cleanup failed: {e}")
-        
-        try:
-            await cleanup_snowflake_service()
-            logger.info("Snowflake service cleanup completed")
-        except Exception as e:
-            logger.error(f"Snowflake cleanup failed: {e}")
-        
-        self._initialized = False
-        self._databricks_available = False
-        self._snowflake_available = False
-        logger.info("Local services cleanup completed")
-
-
-# Global services manager instance (policy-aware)
-_services_manager: Optional[LocalServicesManager] = None
-
-
-async def get_services_manager(policy: Optional[OperationToolingPolicy] = None) -> LocalServicesManager:
-    """
-    Get or create the global services manager with optional policy
-    
-    Args:
-        policy: Optional policy to set on the manager
-        
-    Returns:
-        Initialized LocalServicesManager instance
-    """
-    global _services_manager
-    
-    if _services_manager is None:
-        _services_manager = LocalServicesManager(policy)
-        await _services_manager.initialize()
-    elif policy is not None:
-        # Update policy if provided
-        _services_manager.set_policy(policy)
-    
-    return _services_manager
-
-
-# Cleanup function
-async def cleanup_all_services():
-    """Clean up all local services"""
-    global _services_manager
-    
-    if _services_manager:
-        await _services_manager.cleanup()
-        _services_manager = None
