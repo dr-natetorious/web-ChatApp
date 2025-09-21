@@ -93,6 +93,21 @@ async def stream_chat_completion(
         except Exception:
             logger.debug("Failed to inject server-side tools; continuing without them")
 
+        # Add system instruction explaining SERVER_START/END semantics so the LLM
+        # emits whole server call blocks. This helps streaming parsers detect
+        # server tool invocations even when tokens arrive incrementally.
+        system_instruction = ChatMessage(role='system', content=(
+            "When invoking a server-side tool, emit a block exactly as follows:\n"
+            "SERVER_START\n{\"name\": \"server.<tool_name>\", \"arguments\": {...}}\nSERVER_END\n"
+            "Only the JSON between SERVER_START and SERVER_END will be parsed."
+        ))
+
+        # Prepend the system instruction to messages if not already present
+        # (avoid duplicating if client provided their own system message)
+        has_system = any(m.role == 'system' for m in request.messages)
+        if not has_system:
+            request.messages.insert(0, system_instruction)
+
         # Format messages using LLM-specific logic (same as non-streaming)
         payload = llm.format_messages(
             request.messages, 
@@ -136,6 +151,9 @@ async def stream_chat_completion(
         yield f"data: {initial_chunk.model_dump_json()}\n\n"
 
         # Stream content chunks - handle invoke_model_with_response_stream format
+        # Maintain an output buffer containing what has been generated so far
+        # so parsers can inspect cumulative text (not individual tokens only).
+        output_buffer = ""
         for event in response['body']:
             chunk = event.get('chunk')
             if chunk:
@@ -162,74 +180,135 @@ async def stream_chat_completion(
                     
                     # Send content chunk
                     if content:
-                        # First check for SERVER_START blocks
-                        server_call = parse_server_call(content)
-                        if server_call and server_call.get('function', {}).get('name'):
-                            tool_full = server_call['function']['name']
-                            tool_name = tool_full
-                            args_json = server_call['function'].get('arguments', '{}')
+                        # Append to the cumulative output buffer and parse that
+                        output_buffer += content
+
+                        # Check for TOOL_START...TOOL_END blocks in the accumulated buffer
+                        parsed = parse_tool_call(output_buffer)
+                        if parsed and parsed.get('function', {}).get('name', ''):
+                            func_name = parsed['function']['name']
+                            args_json = parsed['function'].get('arguments', '{}')
                             try:
                                 args = json.loads(args_json)
                             except Exception:
                                 args = {}
 
-                            # Execute the server-side tool via toolbelt
+                            # Determine whether the toolbelt supports this tool
+                            toolbelt_local = get_toolbelt(operation_policy)
+                            supported = False
                             try:
-                                toolbelt = get_toolbelt(operation_policy)
-                                # strip any 'server.' prefix when calling execute_tool
-                                if tool_name.startswith('server.'):
-                                    exec_name = tool_name.split('.', 1)[1]
-                                else:
-                                    exec_name = tool_name
-                                result = await toolbelt.execute_tool(exec_name, args)
-                            except Exception as e:
-                                result = {"success": False, "error": str(e)}
+                                available = toolbelt_local.available_tools()
+                                # available is a list of Tool objects; compare function names
+                                for t in available:
+                                    tname = t.function.get('name') if isinstance(t.function, dict) else getattr(t.function, 'name', None)
+                                    if not tname:
+                                        continue
+                                    if tname == func_name or tname == f"server.{func_name}" or func_name == tname.split('.', 1)[-1]:
+                                        supported = True
+                                        break
+                            except Exception:
+                                supported = False
 
-                            # Stream back SERVER_TOOL_RESULT block with the result
-                            server_result_block = f"SERVER_TOOL_RESULT\n{json.dumps(result)}\nSERVER_TOOL_RESULT_END"
-                            logger.debug(f"Streaming server-tool-result block: {server_result_block}")
-                            chunk_response = ChatCompletionStreamResponse(
-                                id=completion_id,
-                                object="chat.completion.chunk",
-                                created=created,
-                                model=request.model,
-                                choices=[
-                                    ChatCompletionStreamChoice(
-                                        index=0,
-                                        delta=ChatCompletionStreamChoiceDelta(content=server_result_block),
-                                        finish_reason=None
-                                    )
-                                ]
-                            )
-                            yield f"data: {chunk_response.model_dump_json()}\n\n"
+                            if supported:
+                                # Execute using the local toolbelt
+                                try:
+                                    exec_name = func_name
+                                    # allow both 'server.foo' and 'foo'
+                                    if exec_name.startswith('server.'):
+                                        exec_name = exec_name
+                                    result = await toolbelt_local.execute_tool(exec_name, args)
+                                except Exception as e:
+                                    result = {"success": False, "error": str(e)}
 
-                            # Append a system message with the server tool result and reprompt the model
-                            request.messages.append(ChatMessage(role='system', content=f"SERVER_TOOL_RESULT:\n{json.dumps(result)}\nSERVER_TOOL_RESULT_END"))
+                                # Stream back TOOL_RESULT block with the result and reprompt the model
+                                tool_result_block = f"TOOL_RESULT_START\n{json.dumps(result)}\nTOOL_RESULT_END"
+                                logger.debug(f"Streaming tool-result block: {tool_result_block}")
+                                chunk_response = ChatCompletionStreamResponse(
+                                    id=completion_id,
+                                    object="chat.completion.chunk",
+                                    created=created,
+                                    model=request.model,
+                                    choices=[
+                                        ChatCompletionStreamChoice(
+                                            index=0,
+                                            delta=ChatCompletionStreamChoiceDelta(content=tool_result_block),
+                                            finish_reason=None
+                                        )
+                                    ]
+                                )
+                                yield f"data: {chunk_response.model_dump_json()}\n\n"
 
-                            # Re-create payload and call Bedrock again to continue processing with the tool result included
-                            payload = llm.format_messages(
-                                request.messages,
-                                max_tokens,
-                                temperature,
-                                top_p,
-                                request.stop,
-                                request.tools
-                            )
+                                # Append a system message with the tool result and re-invoke the model
+                                request.messages.append(ChatMessage(role='system', content=f"TOOL_RESULT:\n{json.dumps(result)}\nTOOL_RESULT_END"))
+                                payload = llm.format_messages(
+                                    request.messages,
+                                    max_tokens,
+                                    temperature,
+                                    top_p,
+                                    request.stop,
+                                    request.tools
+                                )
+                                logger.debug("Re-invoking model with tool result appended to messages")
+                                response = bedrock_client.invoke_model_with_response_stream(
+                                    modelId=llm.model_id,
+                                    body=json.dumps(payload),
+                                    contentType="application/json",
+                                    accept="application/json"
+                                )
+                                # restart streaming loop with the new response
+                                completion_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
+                                created = int(time.time())
 
-                            logger.debug("Re-invoking model with tool result appended to messages")
-                            response = bedrock_client.invoke_model_with_response_stream(
-                                modelId=llm.model_id,
-                                body=json.dumps(payload),
-                                contentType="application/json",
-                                accept="application/json"
-                            )
-                            # restart streaming loop with the new response
-                            completion_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
-                            created = int(time.time())
-                            continue
+                                # Trim the processed block from the buffer
+                                try:
+                                    start_idx = output_buffer.find('TOOL_START')
+                                    end_idx = output_buffer.find('TOOL_END')
+                                    if start_idx != -1 and end_idx != -1:
+                                        output_buffer = output_buffer[end_idx + len('TOOL_END'):]
+                                except Exception:
+                                    output_buffer = ""
 
-                        # If no server call, check for regular TOOL_START calls
-                        parsed = parse_tool_call(content)
+                                continue
+
+                            else:
+                                # Tool not supported locally: forward the TOOL_START...TOOL_END block to client
+                                # Reconstruct the raw block to send
+                                try:
+                                    # Extract raw JSON between markers
+                                    start_idx = output_buffer.find('TOOL_START')
+                                    remainder = output_buffer[start_idx + len('TOOL_START'):]
+                                    end_idx = remainder.find('TOOL_END')
+                                    raw_json = remainder[:end_idx].strip() if (start_idx != -1 and end_idx != -1) else json.dumps({"name": func_name, "arguments": args})
+                                    forward_block = f"TOOL_START\n{raw_json}\nTOOL_END"
+                                except Exception:
+                                    forward_block = f"TOOL_START\n{json.dumps({"name": func_name, "arguments": args})}\nTOOL_END"
+
+                                logger.debug(f"Forwarding tool block to client (not supported locally): {forward_block}")
+                                chunk_response = ChatCompletionStreamResponse(
+                                    id=completion_id,
+                                    object="chat.completion.chunk",
+                                    created=created,
+                                    model=request.model,
+                                    choices=[
+                                        ChatCompletionStreamChoice(
+                                            index=0,
+                                            delta=ChatCompletionStreamChoiceDelta(content=forward_block),
+                                            finish_reason=None
+                                        )
+                                    ]
+                                )
+                                yield f"data: {chunk_response.model_dump_json()}\n\n"
+
+                                # Trim the processed block from the buffer so we don't re-send
+                                try:
+                                    start_idx = output_buffer.find('TOOL_START')
+                                    end_idx = output_buffer.find('TOOL_END')
+                                    if start_idx != -1 and end_idx != -1:
+                                        output_buffer = output_buffer[end_idx + len('TOOL_END'):]
+                                except Exception:
+                                    output_buffer = ""
+
+                                continue
                         if parsed and parsed.get('function', {}).get('name', ''):
                             # existing behavior for client-side TOOL_START handling
                             func_name = parsed['function']['name']
@@ -264,7 +343,7 @@ async def stream_chat_completion(
                                 )
                                 yield f"data: {chunk_response.model_dump_json()}\n\n"
                             else:
-                                # not a databricks client tool; just forward content
+                                # not a databricks client tool; just forward the incremental content
                                 logger.debug(f"Streaming content: {repr(content)}")
                                 chunk_response = ChatCompletionStreamResponse(
                                     id=completion_id,

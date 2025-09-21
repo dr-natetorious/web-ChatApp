@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from typing import Optional, Dict, Any
 
 from dependencies.policies import policy_dependency
-from services.policy import OperationToolingPolicy, DatabricksPolicy, SnowflakePolicy
+from tools.policy import OperationToolingPolicy, DatabricksPolicy, SnowflakePolicy
 
 # Create router
 router = APIRouter(tags=["auth"])

@@ -16,7 +16,7 @@ Notes:
 """
 from typing import Optional, Dict, List
 from fastapi import Request, HTTPException
-from services.policy import OperationToolingPolicy, DatabricksPolicy, SnowflakePolicy
+from tools.policy import OperationToolingPolicy, DatabricksPolicy, SnowflakePolicy
 
 
 def parse_auth_header(header_value: str) -> Dict[str, str]:

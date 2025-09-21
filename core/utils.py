@@ -12,23 +12,31 @@ logger = logging.getLogger(__name__)
 
 def parse_tool_call(text: str) -> Optional[Dict[str, Any]]:
     """Parse TOOL_START...TOOL_END blocks from generated text."""
-    if "TOOL_START" not in text:
+    # Require both start and end markers to avoid parsing partial/tokenized output
+    if "TOOL_START" not in text or "TOOL_END" not in text:
         return None
-    
 
     try:
         # Extract content between TOOL_START and TOOL_END
         start_idx = text.find("TOOL_START")
         if start_idx == -1:
             return None
-        
-        # Find the JSON content after TOOL_START
+
         json_start = start_idx + len("TOOL_START")
-        json_content = text[json_start:].strip()
-        
-        # Parse the JSON
-        tool_call = json.loads(json_content)
-        
+        remainder = text[json_start:]
+        end_idx = remainder.find("TOOL_END")
+        if end_idx == -1:
+            return None
+
+        json_content = remainder[:end_idx].strip()
+
+        # Parse the JSON safely
+        try:
+            tool_call = json.loads(json_content)
+        except json.JSONDecodeError as e:
+            logger.warning(f"Failed to parse tool call JSON: {e}")
+            return None
+
         return {
             "id": f"call_{uuid.uuid4().hex[:24]}",
             "type": "function",
@@ -37,7 +45,7 @@ def parse_tool_call(text: str) -> Optional[Dict[str, Any]]:
                 "arguments": json.dumps(tool_call.get("arguments", {}))
             }
         }
-    except (json.JSONDecodeError, KeyError) as e:
+    except Exception as e:
         logger.warning(f"Failed to parse tool call: {e}")
         return None
 

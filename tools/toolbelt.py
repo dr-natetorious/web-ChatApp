@@ -23,8 +23,8 @@ async def get_databricks_status(_auth_token: Optional[str] = None, _workspace_ur
     args or environment variables.
     """
     try:
-        token = _auth_token or os.getenv('DATABRICKS_TOKEN')
-        workspace = _workspace_url or os.getenv('DATABRICKS_WORKSPACE_URL')
+        token = os.getenv('DATABRICKS_TOKEN')
+        workspace = os.getenv('DATABRICKS_WORKSPACE_URL')
 
         if not token or not workspace:
             return {"success": False, "error": "Missing Databricks token or workspace URL in environment or args"}
@@ -63,7 +63,7 @@ async def get_snowflake_status(_auth_token: Optional[str] = None, _username: Opt
     """
     try:
         # Snowflake SQL API uses bearer token authentication. Ignore username/password.
-        token = _auth_token or os.getenv('SNOWFLAKE_TOKEN')
+        token =  os.getenv('SNOWFLAKE_TOKEN')
         account = os.getenv('SNOWFLAKE_ACCOUNT')
         warehouse = os.getenv('SNOWFLAKE_WAREHOUSE')
         database = os.getenv('SNOWFLAKE_DATABASE')
@@ -125,17 +125,48 @@ class Toolbelt:
         tools: List[Tool] = []
 
         # Hardcoded list of tools we want to expose (direct local functions)
+        import inspect
+        from typing import Dict as _Dict, Any as _Any
+
         for tname, func in [('get_databricks_status', get_databricks_status), ('get_snowflake_status', get_snowflake_status)]:
             description = (func.__doc__ or '').strip().splitlines()[0] if func and func.__doc__ else ''
+
+            # Build JSON Schema properties from function signature
+            properties: Dict[str, Dict[str, str]] = {}
+            required: List[str] = []
+            try:
+                sig = inspect.signature(func)
+                for pname, param in sig.parameters.items():
+                    # Skip 'self' if present
+                    if pname == 'self':
+                        continue
+                    ann = param.annotation
+                    ptype = 'string'
+                    try:
+                        ann_str = str(ann)
+                        if 'Dict' in ann_str or 'dict' in ann_str or 'Any' in ann_str:
+                            ptype = 'object'
+                    except Exception:
+                        ptype = 'string'
+
+                    properties[pname] = {'type': ptype}
+                    if param.default is inspect._empty:
+                        required.append(pname)
+            except Exception:
+                # Fallback to a generic payload if introspection fails
+                properties = {'__payload': {'type': 'object'}}
+
+            schema: Dict[str, _Any] = {
+                'type': 'object',
+                'properties': properties
+            }
+            if required:
+                schema['required'] = required
+
             tools.append(Tool(type='function', function={
                 'name': f'server.{tname}',
                 'description': description,
-                'parameters': {
-                    'type': 'object',
-                    'properties': {
-                        '__payload': {'type': 'object'}
-                    }
-                }
+                'parameters': schema
             }))
 
         return tools
